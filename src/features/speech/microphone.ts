@@ -161,12 +161,9 @@ export async function createLiveTranscriptStream(
 }
 
 export async function createMicLevelStream(onLevels: (levels: number[]) => void): Promise<() => void> {
-  const fallbackTimer = window.setInterval(() => {
-    onLevels(Array.from({ length: 10 }, () => 0.2 + Math.random() * 0.7));
-  }, 120);
-
   if (!navigator.mediaDevices?.getUserMedia) {
-    return () => window.clearInterval(fallbackTimer);
+    onLevels(Array(10).fill(0.04));
+    return () => undefined;
   }
 
   try {
@@ -174,22 +171,36 @@ export async function createMicLevelStream(onLevels: (levels: number[]) => void)
     const audioContext = new AudioContext();
     const source = audioContext.createMediaStreamSource(stream);
     const analyser = audioContext.createAnalyser();
-    analyser.fftSize = 64;
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.72;
     source.connect(analyser);
-    const data = new Uint8Array(analyser.frequencyBinCount);
+    const frequencyData = new Uint8Array(analyser.frequencyBinCount);
+    const timeDomainData = new Uint8Array(analyser.fftSize);
+    let smoothedEnergy = 0;
 
     const realtimeTimer = window.setInterval(() => {
-      analyser.getByteFrequencyData(data);
-      const stride = Math.max(1, Math.floor(data.length / 10));
+      analyser.getByteTimeDomainData(timeDomainData);
+      let rms = 0;
+      for (let i = 0; i < timeDomainData.length; i += 1) {
+        const sample = (timeDomainData[i] - 128) / 128;
+        rms += sample * sample;
+      }
+      rms = Math.sqrt(rms / timeDomainData.length);
+      const gatedRms = Math.max(0, rms - 0.018);
+      smoothedEnergy = smoothedEnergy * 0.78 + gatedRms * 0.22;
+
+      analyser.getByteFrequencyData(frequencyData);
+      const stride = Math.max(1, Math.floor(frequencyData.length / 10));
       const levels = Array.from({ length: 10 }, (_, index) => {
-        const sample = data[index * stride] ?? 0;
-        return Math.max(0.08, sample / 255);
+        const sample = (frequencyData[index * stride] ?? 0) / 255;
+        const weightedSample = sample * (0.4 + Math.min(1, smoothedEnergy * 22));
+        const restingFloor = 0.03;
+        return Math.min(1, Math.max(restingFloor, weightedSample));
       });
       onLevels(levels);
-    }, 90);
+    }, 80);
 
     return () => {
-      window.clearInterval(fallbackTimer);
       window.clearInterval(realtimeTimer);
       source.disconnect();
       analyser.disconnect();
@@ -197,6 +208,7 @@ export async function createMicLevelStream(onLevels: (levels: number[]) => void)
       audioContext.close().catch(() => undefined);
     };
   } catch {
-    return () => window.clearInterval(fallbackTimer);
+    onLevels(Array(10).fill(0.04));
+    return () => undefined;
   }
 }

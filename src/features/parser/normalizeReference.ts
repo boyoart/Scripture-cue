@@ -122,10 +122,16 @@ const RANGE_JOINERS = new Set(["to", "through", "thru", "-"]);
 function sanitizeTranscript(input: string): string {
   return input
     .toLowerCase()
-    .replace(/[;,!?()[\]{}"'`]/g, " ")
+    .replace(/[!?()[\]{}"'`]/g, " ")
+    .replace(/[.,;]+/g, " ")
+    .replace(/\bchapter\s*(\d+)/g, " chapter $1 ")
+    .replace(/\bverse\s*(\d+)/g, " verse $1 ")
+    .replace(/\bverses\s*(\d+)/g, " verse $1 ")
     .replace(/\b(and|then|please|find|show|me|the)\b/g, " ")
     .replace(/\bchapter\b/g, " chapter ")
     .replace(/\bverses?\b/g, " verse ")
+    .replace(/\bcolon\b/g, " : ")
+    .replace(/\s*:\s*/g, " : ")
     .replace(/\s+-\s+/g, " - ")
     .replace(/\s+/g, " ")
     .trim();
@@ -240,6 +246,49 @@ function parseReferenceParts(remaining: string): {
       verseStart: Number(compact.slice(splitAt)),
       confidenceBoost: 0.24
     };
+  }
+
+  const chapterLabelMatch = remaining.match(/\bchapter\s+([a-z0-9 -]+?)(?=\s+verse\b|$)/);
+  const verseLabelMatch = remaining.match(/\bverse\s+([a-z0-9 -]+)$/);
+  if (chapterLabelMatch) {
+    const chapterTokens = chapterLabelMatch[1].split(" ").filter(Boolean);
+    const chapterParsed = parseNumberWords(chapterTokens, 0);
+    const chapter = chapterParsed?.value;
+
+    let verseStart: number | undefined;
+    let verseEnd: number | undefined;
+    if (verseLabelMatch) {
+      const verseTokens = verseLabelMatch[1].split(" ").filter(Boolean);
+      const verseNumbers: number[] = [];
+      let sawRangeJoiner = false;
+
+      for (let i = 0; i < verseTokens.length; i += 1) {
+        if (RANGE_JOINERS.has(verseTokens[i])) {
+          sawRangeJoiner = true;
+          continue;
+        }
+
+        const parsed = parseNumberWords(verseTokens, i);
+        if (!parsed) {
+          continue;
+        }
+
+        verseNumbers.push(parsed.value);
+        i += parsed.consumed - 1;
+      }
+
+      verseStart = verseNumbers[0];
+      verseEnd = sawRangeJoiner ? verseNumbers[1] : undefined;
+    }
+
+    if (chapter) {
+      return {
+        chapter,
+        verseStart,
+        verseEnd,
+        confidenceBoost: verseStart ? 0.28 : 0.14
+      };
+    }
   }
 
   const tokens = remaining
