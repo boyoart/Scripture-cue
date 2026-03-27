@@ -1,3 +1,6 @@
-# Settings Feature (Placeholder)
+# Settings Feature
 
-Module scaffold for application preferences and persistence.
+Settings helpers around available local translations.
+
+## Current implementation
+- Exposes translation options from the bundled local Bible database.
