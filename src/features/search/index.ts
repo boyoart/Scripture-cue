@@ -1,1 +1,1 @@
-export const SEARCH_FEATURE_READY = false;
+export * from "./localBibleProvider";

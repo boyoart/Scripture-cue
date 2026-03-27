@@ -223,3 +223,116 @@ select {
     min-height: unset;
   }
 }
+
+.icon-button--mic {
+  transition: all 0.2s ease;
+}
+
+.icon-button--listening {
+  background: #0f5f82;
+  border-color: #53c6ff;
+  box-shadow: 0 0 0 1px rgba(83, 198, 255, 0.45), 0 0 18px rgba(46, 186, 255, 0.45);
+}
+
+.icon-button--processing {
+  background: #5a4d16;
+  border-color: #ffdf7b;
+}
+
+.icon-button--success {
+  background: #20512d;
+  border-color: #8ce5a3;
+}
+
+.icon-button--error {
+  background: #61252f;
+  border-color: #ffa3ad;
+}
+
+.mic-status-row {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.mic-state {
+  font-size: 0.78rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #334173;
+  background: #0f1631;
+}
+
+.mic-state--listening {
+  border-color: #53c6ff;
+  color: #a8e8ff;
+}
+
+.mic-state--processing {
+  border-color: #e8c85a;
+  color: #ffe6a8;
+}
+
+.mic-state--success {
+  border-color: #84d59b;
+  color: #beffce;
+}
+
+.mic-state--error {
+  border-color: #e9969f;
+  color: #ffccd3;
+}
+
+.spectrum-meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 30px;
+  padding: 2px 6px;
+  border: 1px solid #324073;
+  border-radius: 10px;
+  background: #0d1530;
+}
+
+.spectrum-meter span {
+  width: 5px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #7fd8ff, #81ffb9);
+  transition: height 0.1s linear;
+}
+
+.search-actions {
+  margin-top: 0.9rem;
+}
+
+.run-search-button {
+  width: 100%;
+  border: 1px solid #445797;
+  border-radius: 10px;
+  background: #20356f;
+  color: #f5f7ff;
+  padding: 0.65rem 0.8rem;
+  cursor: pointer;
+}
+
+.history-empty {
+  margin: 0;
+  color: #9ba8df;
+  font-size: 0.88rem;
+}
+
+.error-text {
+  margin: 0.5rem 0 0;
+  color: #ffb5bf;
+  font-size: 0.85rem;
+}
+
+.verse-preview--empty {
+  color: #98a6d9;
+}
+
+.parser-debug-grid dd {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
