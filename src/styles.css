@@ -63,7 +63,7 @@ h1 {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.4fr);
+  grid-template-columns: minmax(360px, 0.95fr) minmax(560px, 1.35fr);
   gap: 1rem;
   min-height: calc(100vh - 140px);
 }
@@ -130,6 +130,117 @@ select {
   background: #1d2b5b;
   color: #f8f9ff;
   cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.icon-button--mic {
+  min-width: 52px;
+}
+
+.icon-button--listening {
+  border-color: #53d0ff;
+  box-shadow: 0 0 14px rgba(83, 208, 255, 0.35);
+  background: #1a3e6a;
+}
+
+.icon-button--processing {
+  border-color: #7a8de8;
+  background: #2f3f72;
+}
+
+.icon-button--success {
+  border-color: #82ffbd;
+  background: #215143;
+}
+
+.icon-button--error {
+  border-color: #ff87aa;
+  background: #5a2437;
+}
+
+.search-submit {
+  border-radius: 10px;
+  border: 1px solid #5f72bd;
+  background: #2f4488;
+  color: #fff;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+}
+
+.speech-row {
+  margin-top: 0.7rem;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.speech-readout p {
+  margin: 0;
+  color: #b5c1ee;
+  font-size: 0.82rem;
+}
+
+.speech-error {
+  margin-top: 0.25rem;
+  color: #ff9db8;
+}
+
+.microphone-meter {
+  min-width: 152px;
+  border: 1px solid #36457a;
+  border-radius: 10px;
+  padding: 0.45rem 0.6rem;
+  background: linear-gradient(180deg, rgba(15, 22, 49, 0.95), rgba(12, 19, 43, 0.92));
+  box-shadow: inset 0 0 12px rgba(56, 90, 180, 0.2);
+}
+
+.microphone-meter__bars {
+  height: 28px;
+  display: grid;
+  grid-template-columns: repeat(14, minmax(5px, 1fr));
+  align-items: end;
+  gap: 3px;
+}
+
+.microphone-meter__bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transform-origin: bottom;
+  transition: transform 90ms linear;
+  background: linear-gradient(180deg, #80f2ff, #4f78ff 75%);
+  box-shadow: 0 0 8px rgba(78, 123, 255, 0.4);
+}
+
+.microphone-meter__label {
+  margin-top: 0.33rem;
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9fb0ea;
+}
+
+.microphone-meter--listening .microphone-meter__bar {
+  background: linear-gradient(180deg, #7dfff2, #38b0ff 75%);
+}
+
+.microphone-meter--processing .microphone-meter__bar {
+  background: linear-gradient(180deg, #cfd8ff, #7f8cf6 75%);
+}
+
+.microphone-meter--success .microphone-meter__bar {
+  background: linear-gradient(180deg, #d5ffe8, #84ffbf 75%);
+}
+
+.microphone-meter--error .microphone-meter__bar {
+  background: linear-gradient(180deg, #ffc0d4, #ff7fa4 75%);
 }
 
 .history-list {
@@ -186,6 +297,12 @@ select {
   white-space: pre-line;
 }
 
+.search-warning {
+  margin: 0.7rem 0 0;
+  color: #ffd49f;
+  font-size: 0.86rem;
+}
+
 .metadata-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 1fr));
@@ -215,11 +332,4 @@ select {
   color: #11152a;
   background: linear-gradient(140deg, #7fd8ff, #82ffbd);
   cursor: pointer;
-}
-
-@media (max-width: 980px) {
-  .workspace-grid {
-    grid-template-columns: 1fr;
-    min-height: unset;
-  }
 }
