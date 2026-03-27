@@ -21,10 +21,15 @@
     ],
     "bundle": {
       "active": true,
-      "targets": ["msi"],
+      "targets": [
+        "msi"
+      ],
       "identifier": "com.scripturecue.desktop",
       "icon": [
         "icons/icon.ico"
+      ],
+      "resources": [
+        "resources/bibles/KJV.db"
       ]
     }
   }

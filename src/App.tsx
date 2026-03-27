@@ -1,18 +1,18 @@
 import { type ChangeEvent, useEffect, useMemo, useState } from "react";
 import HistoryList from "./components/HistoryList";
 import PanelCard from "./components/PanelCard";
+import { DEFAULT_TRANSLATION, SUPPORTED_TRANSLATIONS } from "./data/bibleDb";
 import { addHistoryEntry, type HistoryEntry } from "./features/history";
 import { normalizeTranscriptToReference, normalizeTypedReference } from "./features/parser";
 import { localBibleProvider } from "./features/search";
 import { captureTranscript, createMicLevelStream, type MicState } from "./features/speech";
-import { SUPPORTED_TRANSLATIONS } from "./data/bibleDb";
 import type { VerseResult } from "./types/verse";
 
 const DEFAULT_QUERY = "Psalm 23:1-3";
 
 export default function App() {
   const [queryInput, setQueryInput] = useState(DEFAULT_QUERY);
-  const [translation, setTranslation] = useState<(typeof SUPPORTED_TRANSLATIONS)[number]>("NIV");
+  const [translation, setTranslation] = useState<(typeof SUPPORTED_TRANSLATIONS)[number]>(DEFAULT_TRANSLATION);
   const [micState, setMicState] = useState<MicState>("idle");
   const [micError, setMicError] = useState<string | null>(null);
   const [spectrumLevels, setSpectrumLevels] = useState<number[]>(Array(10).fill(0.12));
@@ -30,7 +30,7 @@ export default function App() {
   }, [micState]);
 
   useEffect(() => {
-    runTypedSearch(DEFAULT_QUERY, "NIV");
+    runTypedSearch(DEFAULT_QUERY, DEFAULT_TRANSLATION);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -52,7 +52,7 @@ export default function App() {
 
     if (!results.length) {
       setActiveResult(null);
-      setStatusText("No result found. Try another reference.");
+      setStatusText("No result found in local KJV database. Try another reference.");
       return;
     }
 
