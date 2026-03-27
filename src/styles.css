@@ -132,6 +132,11 @@ select {
   cursor: pointer;
 }
 
+.icon-button:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
+
 .history-list {
   margin: 0;
   padding: 0;
@@ -160,7 +165,8 @@ select {
 }
 
 .history-list__meta,
-.history-list__time {
+.history-list__time,
+.history-empty {
   color: #9aa6d8;
   font-size: 0.82rem;
 }
@@ -204,6 +210,11 @@ select {
   margin: 0.2rem 0 0;
   font-size: 1rem;
   font-weight: 600;
+}
+
+.debug-text {
+  margin: 0;
+  color: #b8c4f6;
 }
 
 .present-button {

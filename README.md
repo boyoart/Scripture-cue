@@ -1,13 +1,13 @@
-# Scripture Cue (Module 1 Scaffold)
+# Scripture Cue (Consolidated MVP)
 
-Windows-first desktop scaffold for **Scripture Cue**, built with **Tauri + React + TypeScript + Vite**.
+Windows-first desktop operator console for **Scripture Cue**, built with **Tauri + React + TypeScript + Vite**.
 
-## MVP Scope in this module
-- Desktop shell setup (Tauri)
-- React UI starter screen
-- Dark theme baseline
-- Organized architecture folders for upcoming modules
-- Core query/result/provider interfaces
+## Consolidated MVP Scope
+- Stable desktop shell setup (Tauri v2 aligned across Rust + Node CLI)
+- Polished operator console UI with typed search + microphone search flow
+- Query parser and local bundled Bible DB search
+- Verse preview, metadata panel, translation selector behavior, and recent history
+- Dev-only parser debug panel to help diagnose search/parsing behavior
 
 ## Prerequisites
 - Node.js 20+
@@ -41,7 +41,7 @@ npm run tauri:build
 ```text
 src/
   components/
-  pages/
+  data/
   features/
     speech/
     parser/
@@ -57,7 +57,7 @@ src/
 src-tauri/
 ```
 
-## Current Module Limitations
-- No real speech recognition provider yet.
-- No real Bible search provider yet.
-- No fullscreen presenter behavior yet.
+## Known Gaps
+- Browser speech recognition support varies by runtime; a mock transcript fallback is used.
+- Local bundled Bible DB is intentionally minimal for MVP sample coverage.
+- Presenter fullscreen behavior is still scaffolded for future implementation.

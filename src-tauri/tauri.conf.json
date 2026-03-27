@@ -1,0 +1,38 @@
+{
+  "$schema": "./gen/schemas/desktop-schema.json",
+  "productName": "Scripture Cue",
+  "version": "0.2.0",
+  "identifier": "com.scripturecue.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Scripture Cue",
+        "label": "main",
+        "width": 1365,
+        "height": 900,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com"
+    }
+  }
+}
