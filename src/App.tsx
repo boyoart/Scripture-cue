@@ -1,12 +1,42 @@
+import { useMemo, useState } from "react";
 import HistoryList from "./components/HistoryList";
 import PanelCard from "./components/PanelCard";
+import { MockSpeechProvider, useSpeechInput } from "./features/speech";
 
 const verseText = `The Lord is my shepherd, I lack nothing.
 He makes me lie down in green pastures,
 he leads me beside quiet waters,
 he refreshes my soul.`;
 
+function getMicIcon(state: "idle" | "listening" | "processing" | "success" | "error") {
+  switch (state) {
+    case "listening":
+      return "🔴";
+    case "processing":
+      return "⏳";
+    case "success":
+      return "✅";
+    case "error":
+      return "⚠️";
+    case "idle":
+    default:
+      return "🎙️";
+  }
+}
+
 export default function App() {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const speechProvider = useMemo(
+    () => new MockSpeechProvider({ delayMs: 1100, failOnAttemptNumbers: [3] }),
+    []
+  );
+
+  const speechInput = useSpeechInput({
+    provider: speechProvider,
+    onTranscript: (transcript) => setSearchQuery(transcript)
+  });
+
   return (
     <main className="app-shell">
       <header className="app-shell__topbar">
@@ -25,11 +55,52 @@ export default function App() {
                 Search
               </label>
               <div className="search-row">
-                <input id="query-input" placeholder="Type verse reference or keywords" />
-                <button type="button" className="icon-button" aria-label="Start voice search">
-                  🎙
+                <input
+                  id="query-input"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Type verse reference or keywords"
+                  aria-label="Verse reference or keyword search"
+                />
+                <button
+                  type="button"
+                  className={`icon-button icon-button--${speechInput.state}`}
+                  aria-label={speechInput.actionLabel}
+                  aria-pressed={speechInput.state === "listening"}
+                  onClick={speechInput.startListening}
+                  disabled={!speechInput.canStart || speechInput.isBusy}
+                >
+                  <span aria-hidden>{getMicIcon(speechInput.state)}</span>
                 </button>
               </div>
+
+              <div className={`speech-status speech-status--${speechInput.state}`} role="status" aria-live="polite">
+                <span className="speech-status__dot" aria-hidden />
+                <span>{speechInput.statusText}</span>
+              </div>
+
+              {speechInput.errorMessage ? (
+                <p className="speech-error" role="alert">
+                  {speechInput.errorMessage}
+                </p>
+              ) : null}
+
+              {speechInput.state === "success" ? (
+                <div className="speech-success-row">
+                  <p className="speech-confidence">
+                    Transcript confidence: {Math.round((speechInput.confidence ?? 0) * 100)}%
+                  </p>
+                  <button type="button" className="text-button" onClick={speechInput.resetToIdle}>
+                    Clear state
+                  </button>
+                </div>
+              ) : null}
+
+              {speechInput.canRetry ? (
+                <button type="button" className="text-button" onClick={speechInput.startListening}>
+                  Retry speech input
+                </button>
+              ) : null}
             </div>
 
             <div className="select-wrap">
