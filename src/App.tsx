@@ -1,12 +1,105 @@
+import { useMemo, useState } from "react";
 import HistoryList from "./components/HistoryList";
 import PanelCard from "./components/PanelCard";
+import { parseVerseQuery } from "./features/parser";
+import { searchLocalBibleDb } from "./features/search";
+import { captureSpeechTranscript, type SpeechCaptureState } from "./features/speech";
+import type { VerseResult } from "./types/verse";
 
-const verseText = `The Lord is my shepherd, I lack nothing.
-He makes me lie down in green pastures,
-he leads me beside quiet waters,
-he refreshes my soul.`;
+const DEFAULT_QUERY = "Isaiah 40 31";
+
+type SearchState = "idle" | "searching" | "success" | "no_results" | "error";
+
+function getSpeechStatusLabel(state: SpeechCaptureState): string {
+  if (state === "listening") {
+    return "Listening...";
+  }
+  if (state === "processing") {
+    return "Processing speech...";
+  }
+  if (state === "success") {
+    return "Transcript captured.";
+  }
+  if (state === "error") {
+    return "Could not capture speech.";
+  }
+  return "Microphone ready";
+}
 
 export default function App() {
+  const [queryText, setQueryText] = useState(DEFAULT_QUERY);
+  const [translation, setTranslation] = useState("NIV");
+  const [searchState, setSearchState] = useState<SearchState>("idle");
+  const [speechState, setSpeechState] = useState<SpeechCaptureState>("idle");
+  const [statusMessage, setStatusMessage] = useState("Ready for typed or microphone input.");
+  const [results, setResults] = useState<VerseResult[]>([]);
+
+  const activeResult = results[0];
+
+  const derivedStatus = useMemo(() => {
+    if (speechState === "error" || searchState === "error") {
+      return "status-chip status-chip--error";
+    }
+    if (speechState === "processing" || searchState === "searching") {
+      return "status-chip status-chip--processing";
+    }
+    if (searchState === "success" || speechState === "success") {
+      return "status-chip status-chip--success";
+    }
+    return "status-chip";
+  }, [searchState, speechState]);
+
+  const runSearch = async (text: string) => {
+    const raw = text.trim();
+    if (!raw) {
+      setResults([]);
+      setSearchState("no_results");
+      setStatusMessage("Enter a verse reference or phrase to search.");
+      return;
+    }
+
+    setSearchState("searching");
+    setStatusMessage("Searching local Bible database...");
+
+    try {
+      const parsed = parseVerseQuery(raw, translation);
+      const verseResults = await searchLocalBibleDb(parsed);
+      setResults(verseResults);
+
+      if (verseResults.length > 0) {
+        setSearchState("success");
+        setStatusMessage(`Found ${verseResults.length} result(s) for \"${raw}\".`);
+      } else {
+        setSearchState("no_results");
+        setStatusMessage(`No verses found for \"${raw}\" in ${translation}.`);
+      }
+    } catch (error) {
+      setSearchState("error");
+      setStatusMessage(`Search failed: ${(error as Error).message}`);
+    }
+  };
+
+  const onSearchClick = async () => {
+    await runSearch(queryText);
+  };
+
+  const onMicClick = async () => {
+    setSpeechState("listening");
+    setStatusMessage("Listening for scripture reference...");
+
+    try {
+      const speech = await captureSpeechTranscript();
+      setSpeechState("processing");
+      setQueryText(speech.transcript);
+      setStatusMessage(`Heard: \"${speech.transcript}\". Running parser and search...`);
+      await runSearch(speech.transcript);
+      setSpeechState("success");
+    } catch (error) {
+      setSpeechState("error");
+      setStatusMessage(`Microphone error: ${(error as Error).message}`);
+    }
+  };
+
   return (
     <main className="app-shell">
       <header className="app-shell__topbar">
@@ -19,24 +112,45 @@ export default function App() {
 
       <div className="workspace-grid">
         <aside className="workspace-column workspace-column--left">
-          <PanelCard title="Scripture Search" subtitle="Find passage, topic, or reference">
+          <PanelCard title="Scripture Search" subtitle="Find passage by typed or microphone input">
             <div className="search-controls">
               <label htmlFor="query-input" className="field-label">
                 Search
               </label>
               <div className="search-row">
-                <input id="query-input" placeholder="Type verse reference or keywords" />
-                <button type="button" className="icon-button" aria-label="Start voice search">
+                <input
+                  id="query-input"
+                  placeholder="Type verse reference or keywords"
+                  value={queryText}
+                  onChange={(event) => setQueryText(event.target.value)}
+                />
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Start voice search"
+                  onClick={onMicClick}
+                  disabled={speechState === "listening" || speechState === "processing"}
+                >
                   🎙
                 </button>
+                <button type="button" className="search-button" onClick={onSearchClick}>
+                  Search
+                </button>
               </div>
+              <p className="microphone-status" role="status">
+                {getSpeechStatusLabel(speechState)}
+              </p>
             </div>
 
             <div className="select-wrap">
               <label htmlFor="translation" className="field-label">
                 Translation
               </label>
-              <select id="translation" defaultValue="NIV">
+              <select
+                id="translation"
+                value={translation}
+                onChange={(event) => setTranslation(event.target.value)}
+              >
                 <option value="NIV">NIV</option>
                 <option value="ESV">ESV</option>
                 <option value="KJV">KJV</option>
@@ -57,7 +171,7 @@ export default function App() {
             className="preview-card"
           >
             <article className="verse-preview">
-              <p>{verseText}</p>
+              <p>{activeResult ? activeResult.text : "No verse selected yet."}</p>
             </article>
           </PanelCard>
 
@@ -65,19 +179,19 @@ export default function App() {
             <dl className="metadata-grid">
               <div>
                 <dt>Reference</dt>
-                <dd>Psalm 23:1-3</dd>
+                <dd>{activeResult?.reference ?? "—"}</dd>
               </div>
               <div>
                 <dt>Translation</dt>
-                <dd>NIV</dd>
+                <dd>{activeResult?.translationCode ?? translation}</dd>
               </div>
               <div>
-                <dt>Theme</dt>
-                <dd>Comfort & Assurance</dd>
+                <dt>Input Mode</dt>
+                <dd>{speechState === "success" ? "Microphone" : "Typed"}</dd>
               </div>
               <div>
                 <dt>Status</dt>
-                <dd>Previewed</dd>
+                <dd>{searchState.replace("_", " ")}</dd>
               </div>
             </dl>
           </PanelCard>
@@ -87,6 +201,8 @@ export default function App() {
           </button>
         </section>
       </div>
+
+      <footer className={derivedStatus}>{statusMessage}</footer>
     </main>
   );
 }

@@ -105,7 +105,8 @@ h1 {
 }
 
 .search-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   gap: 0.6rem;
 }
 
@@ -123,13 +124,33 @@ select {
   margin-bottom: 0.9rem;
 }
 
-.icon-button {
+.icon-button,
+.search-button {
   min-width: 44px;
   border-radius: 10px;
   border: 1px solid #3c4c86;
-  background: #1d2b5b;
   color: #f8f9ff;
   cursor: pointer;
+}
+
+.icon-button {
+  background: #1d2b5b;
+}
+
+.icon-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.search-button {
+  padding: 0.72rem 0.95rem;
+  background: #273a78;
+}
+
+.microphone-status {
+  margin: 0.55rem 0 0;
+  font-size: 0.8rem;
+  color: #a6b2e8;
 }
 
 .history-list {
@@ -204,6 +225,7 @@ select {
   margin: 0.2rem 0 0;
   font-size: 1rem;
   font-weight: 600;
+  text-transform: capitalize;
 }
 
 .present-button {
@@ -217,9 +239,26 @@ select {
   cursor: pointer;
 }
 
-@media (max-width: 980px) {
-  .workspace-grid {
-    grid-template-columns: 1fr;
-    min-height: unset;
-  }
+.status-chip {
+  margin: 0;
+  border: 1px solid #364780;
+  background: #111939;
+  color: #c7d1ff;
+  border-radius: 12px;
+  padding: 0.7rem 0.9rem;
+}
+
+.status-chip--processing {
+  border-color: #6f7dd8;
+  color: #f2f6ff;
+}
+
+.status-chip--success {
+  border-color: #3da07c;
+  color: #cbffe8;
+}
+
+.status-chip--error {
+  border-color: #c86a7b;
+  color: #ffdbe1;
 }
