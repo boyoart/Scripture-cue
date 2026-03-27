@@ -1,11 +1,11 @@
-import { type ChangeEvent, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 import HistoryList from "./components/HistoryList";
 import PanelCard from "./components/PanelCard";
 import { DEFAULT_TRANSLATION, SUPPORTED_TRANSLATIONS } from "./data/bibleDb";
 import { addHistoryEntry, type HistoryEntry } from "./features/history";
 import { normalizeTranscriptToReference, normalizeTypedReference } from "./features/parser";
 import { localBibleProvider } from "./features/search";
-import { captureTranscript, createMicLevelStream, type MicState } from "./features/speech";
+import { createLiveTranscriptStream, createMicLevelStream, type MicState, type TranscriptChunk } from "./features/speech";
 import type { VerseResult } from "./types/verse";
 
 const DEFAULT_QUERY = "Psalm 23:1-3";
@@ -20,19 +20,30 @@ export default function App() {
   const [activeResult, setActiveResult] = useState<VerseResult | null>(null);
   const [statusText, setStatusText] = useState("Ready for input");
   const [debugInfo, setDebugInfo] = useState({ raw: "", normalized: "", canonicalBook: "", confidence: 0 });
+  const [liveEnabled, setLiveEnabled] = useState(false);
+  const translationRef = useRef(translation);
+  const queryInputRef = useRef(queryInput);
 
   const micLabel = useMemo(() => {
     if (micState === "listening") return "Listening";
     if (micState === "processing") return "Processing";
     if (micState === "success") return "Success";
     if (micState === "error") return "Error";
-    return "Start Voice";
+    return "Idle";
   }, [micState]);
 
   useEffect(() => {
     runTypedSearch(DEFAULT_QUERY, DEFAULT_TRANSLATION);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    translationRef.current = translation;
+  }, [translation]);
+
+  useEffect(() => {
+    queryInputRef.current = queryInput;
+  }, [queryInput]);
 
   async function runQuery(rawInput: string, source: "typed" | "speech") {
     const normalized =
@@ -47,12 +58,16 @@ export default function App() {
       confidence: normalized.confidence
     });
 
-    setStatusText(source === "speech" ? "Processing speech transcript..." : "Searching local Bible database...");
+    setStatusText(source === "speech" ? "Processing speech transcript chunk..." : "Searching local Bible database...");
     const results = await localBibleProvider.search(normalized.query);
 
     if (!results.length) {
       setActiveResult(null);
-      setStatusText("No result found in local KJV database. Try another reference.");
+      setStatusText(
+        source === "speech"
+          ? "No result found in local KJV database. Waiting for a better live reference..."
+          : "No result found in local KJV database. Try another reference."
+      );
       return;
     }
 
@@ -81,32 +96,112 @@ export default function App() {
     await runQuery(nextQuery, "typed");
   }
 
-  async function handleMicSearch() {
+  async function toggleLiveListening() {
+    if (liveEnabled) {
+      setLiveEnabled(false);
+      setMicState("idle");
+      setStatusText("Live listening stopped.");
+      return;
+    }
+
     setMicError(null);
-    setMicState("listening");
-    setStatusText("Listening for scripture reference...");
+    setLiveEnabled(true);
+  }
 
-    const stopLevelStream = await createMicLevelStream(setSpectrumLevels);
+  useEffect(() => {
+    if (!liveEnabled) {
+      setSpectrumLevels(Array(10).fill(0.12));
+      return;
+    }
 
-    try {
-      const fallback = queryInput.trim() || "John three sixteen";
-      const speech = await captureTranscript(fallback);
+    let disposed = false;
+    let lastTriggeredKey = "";
+    let lastTriggeredAt = 0;
+    const duplicateCooldownMs = 9000;
+    let resetSuccessTimer: number | null = null;
+    let stopTranscript: (() => void) | null = null;
+    let stopSpectrum: (() => void) | null = null;
+
+    const processChunk = async (chunk: TranscriptChunk) => {
+      if (disposed) {
+        return;
+      }
+
+      const transcript = chunk.transcript.trim();
+      if (!transcript) {
+        setMicState("error");
+        setMicError("Speech recognition disconnected. Retrying...");
+        setStatusText("Speech recognition disconnected. Retrying...");
+        return;
+      }
+
+      setMicError(null);
+      setQueryInput(transcript);
       setMicState("processing");
 
-      const transcript = speech.transcript.trim();
-      setQueryInput(transcript);
+      const normalized = normalizeTranscriptToReference(transcript, translationRef.current);
+      setDebugInfo({
+        raw: normalized.rawTranscript,
+        normalized: normalized.normalizedReference,
+        canonicalBook: normalized.canonicalBook || "(none)",
+        confidence: normalized.confidence
+      });
+
+      if (!normalized.query.chapter || !normalized.query.canonicalBook || normalized.confidence < 0.65) {
+        setMicState("listening");
+        setStatusText(`Listening... confidence ${normalized.confidence.toFixed(2)} too low for auto-search.`);
+        return;
+      }
+
+      const dedupeKey = `${normalized.normalizedReference}-${translationRef.current}`;
+      const now = Date.now();
+      if (dedupeKey === lastTriggeredKey && now - lastTriggeredAt < duplicateCooldownMs) {
+        setMicState("listening");
+        setStatusText(`Suppressed duplicate live detection for ${normalized.normalizedReference}.`);
+        return;
+      }
+
+      lastTriggeredKey = dedupeKey;
+      lastTriggeredAt = now;
+
       await runQuery(transcript, "speech");
       setMicState("success");
+      if (resetSuccessTimer) {
+        window.clearTimeout(resetSuccessTimer);
+      }
+      resetSuccessTimer = window.setTimeout(() => {
+        if (!disposed) {
+          setMicState("listening");
+        }
+      }, 900);
+    };
 
-      window.setTimeout(() => setMicState("idle"), 900);
-    } catch (error) {
+    (async () => {
+      setMicState("listening");
+      setStatusText("Live listening active. Say a scripture reference.");
+      stopSpectrum = await createMicLevelStream(setSpectrumLevels);
+      stopTranscript = await createLiveTranscriptStream(processChunk, queryInputRef.current.trim() || "John three sixteen");
+    })().catch((error) => {
       setMicState("error");
-      setStatusText("Microphone capture failed. You can still type references.");
-      setMicError(error instanceof Error ? error.message : "Unknown microphone error");
-    } finally {
-      stopLevelStream();
+      setMicError(error instanceof Error ? error.message : "Unable to start live listening.");
+      setStatusText("Unable to start live listening.");
+      setLiveEnabled(false);
+    });
+
+    return () => {
+      disposed = true;
+      if (resetSuccessTimer) {
+        window.clearTimeout(resetSuccessTimer);
+      }
+      stopTranscript?.();
+      stopSpectrum?.();
+      setMicState("idle");
       setSpectrumLevels(Array(10).fill(0.12));
-    }
+    };
+  }, [liveEnabled]);
+
+  async function handleMicSearch() {
+    await toggleLiveListening();
   }
 
   async function handleHistorySelect(entry: HistoryEntry) {
@@ -142,9 +237,9 @@ export default function App() {
                   type="button"
                   className={`icon-button icon-button--mic icon-button--${micState}`}
                   onClick={handleMicSearch}
-                  aria-label="Start voice search"
+                  aria-label={liveEnabled ? "Stop live listening" : "Start live listening"}
                 >
-                  🎙
+                  {liveEnabled ? "Stop Live" : "GO LIVE"}
                 </button>
               </div>
               <div className="mic-status-row">
