@@ -1,5 +1,7 @@
+import { useMemo, useState } from "react";
 import HistoryList from "./components/HistoryList";
 import PanelCard from "./components/PanelCard";
+import { parseVerseRequest } from "./features/parser";
 
 const verseText = `The Lord is my shepherd, I lack nothing.
 He makes me lie down in green pastures,
@@ -7,6 +9,10 @@ he leads me beside quiet waters,
 he refreshes my soul.`;
 
 export default function App() {
+  const [queryText, setQueryText] = useState("");
+
+  const parserResult = useMemo(() => parseVerseRequest(queryText), [queryText]);
+
   return (
     <main className="app-shell">
       <header className="app-shell__topbar">
@@ -25,7 +31,12 @@ export default function App() {
                 Search
               </label>
               <div className="search-row">
-                <input id="query-input" placeholder="Type verse reference or keywords" />
+                <input
+                  id="query-input"
+                  value={queryText}
+                  onChange={(event) => setQueryText(event.target.value)}
+                  placeholder="Type verse reference, spoken transcript, or keywords"
+                />
                 <button type="button" className="icon-button" aria-label="Start voice search">
                   🎙
                 </button>
@@ -42,6 +53,14 @@ export default function App() {
                 <option value="KJV">KJV</option>
                 <option value="NLT">NLT</option>
               </select>
+            </div>
+
+            <div className="parser-status" aria-live="polite">
+              <p className="parser-status__title">Parser Debug Output</p>
+              <p>
+                Classification: <strong>{parserResult.query.kind}</strong>
+              </p>
+              <pre>{JSON.stringify(parserResult, null, 2)}</pre>
             </div>
           </PanelCard>
 
@@ -73,11 +92,11 @@ export default function App() {
               </div>
               <div>
                 <dt>Theme</dt>
-                <dd>Comfort & Assurance</dd>
+                <dd>Comfort &amp; Assurance</dd>
               </div>
               <div>
                 <dt>Status</dt>
-                <dd>Previewed</dd>
+                <dd>Parser Ready (Search Pending)</dd>
               </div>
             </dl>
           </PanelCard>
