@@ -132,6 +132,18 @@ select {
   cursor: pointer;
 }
 
+.search-button {
+  margin-top: 0.9rem;
+  border: 1px solid #3d63d3;
+  background: #2449ba;
+  color: #f3f7ff;
+  border-radius: 10px;
+  width: 100%;
+  padding: 0.62rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .history-list {
   margin: 0;
   padding: 0;
@@ -186,24 +198,28 @@ select {
   white-space: pre-line;
 }
 
-.metadata-grid {
+.metadata-grid,
+.debug-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(120px, 1fr));
   gap: 0.8rem;
   margin: 0;
 }
 
-.metadata-grid dt {
+.metadata-grid dt,
+.debug-grid dt {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: #97a5da;
 }
 
-.metadata-grid dd {
+.metadata-grid dd,
+.debug-grid dd {
   margin: 0.2rem 0 0;
   font-size: 1rem;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .present-button {
@@ -215,11 +231,4 @@ select {
   color: #11152a;
   background: linear-gradient(140deg, #7fd8ff, #82ffbd);
   cursor: pointer;
-}
-
-@media (max-width: 980px) {
-  .workspace-grid {
-    grid-template-columns: 1fr;
-    min-height: unset;
-  }
 }
