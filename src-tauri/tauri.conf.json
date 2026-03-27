@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/1",
+  "package": {
+    "productName": "Scripture Cue",
+    "version": "0.2.0"
+  },
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "path": {
+        "all": true
+      }
+    },
+    "bundle": {
+      "active": true,
+      "targets": ["msi"],
+      "identifier": "com.scripturecue.app",
+      "icon": [
+        "icons/icon.ico"
+      ],
+      "resources": [
+        "resources/bibles/bible.db"
+      ]
+    },
+    "windows": [
+      {
+        "title": "Scripture Cue",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ]
+  }
+}
