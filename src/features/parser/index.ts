@@ -1,1 +1,1 @@
-export const PARSER_FEATURE_READY = false;
+export * from "./normalizeReference";

@@ -1,0 +1,31 @@
+{
+  "$schema": "./gen/schemas/desktop-schema.json",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "Scripture Cue",
+    "version": "0.2.0"
+  },
+  "tauri": {
+    "windows": [
+      {
+        "title": "Scripture Cue",
+        "width": 1320,
+        "height": 860,
+        "resizable": true
+      }
+    ],
+    "bundle": {
+      "active": true,
+      "targets": ["msi"],
+      "identifier": "com.scripturecue.desktop",
+      "icon": [
+        "icons/icon.ico"
+      ]
+    }
+  }
+}

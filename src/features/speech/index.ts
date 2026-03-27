@@ -1,1 +1,1 @@
-export const SPEECH_FEATURE_READY = false;
+export * from "./microphone";
