@@ -54,11 +54,36 @@ fn numbered_book_variants(book: &str) -> Vec<String> {
     variants
 }
 
+fn spoken_numbered_book_variants(book: &str) -> Vec<String> {
+    let mut variants = vec![book.to_string()];
+    let prefixes = [
+        ("first ", "1 "),
+        ("second ", "2 "),
+        ("third ", "3 "),
+    ];
+
+    let lower = book.to_lowercase();
+    for (needle, replacement) in prefixes {
+        if lower.starts_with(needle) {
+            let suffix = book[needle.len()..].trim_start();
+            variants.push(format!("{replacement}{suffix}"));
+        }
+    }
+
+    variants
+}
+
 fn book_variants(canonical_book: &str) -> Vec<String> {
-    let mut variants = numbered_book_variants(canonical_book);
+    let mut variants = spoken_numbered_book_variants(canonical_book);
+    variants = variants
+        .into_iter()
+        .flat_map(|variant| numbered_book_variants(&variant))
+        .collect();
+
     match canonical_book {
         "Psalm" => variants.push("Psalms".to_string()),
         "Psalms" => variants.push("Psalm".to_string()),
+        "Song of Songs" => variants.push("Song of Solomon".to_string()),
         "Song of Solomon" => {
             variants.push("Song of Songs".to_string());
             variants.push("Canticles".to_string());
@@ -190,12 +215,14 @@ fn build_kjv_schema_query(
     book_fk_col: &str,
     book_in_count: usize,
     translation_col: Option<&str>,
+    include_translation_filter: bool,
 ) -> String {
     let book_placeholders = std::iter::repeat_n("?", book_in_count)
         .collect::<Vec<_>>()
         .join(",");
 
     let translation_clause = translation_col
+        .filter(|_| include_translation_filter)
         .map(|column| format!(" AND v.{column} = ?"))
         .unwrap_or_default();
 
@@ -245,10 +272,16 @@ fn try_kjv_schema_search(
 
     let books = load_kjv_books(conn)?;
     let matched_books = resolve_book_matches(&books, canonical_book);
+    let matched_book_names: Vec<String> = matched_books
+        .iter()
+        .map(|(_, name)| name.clone())
+        .collect();
+    let matched_book_ids: Vec<i64> = matched_books.iter().map(|(id, _)| *id).collect();
     debug_log(format!(
-        "matched book rows for {canonical_book}: {:?}",
-        matched_books
+        "matched book name(s) for {canonical_book}: {:?}",
+        matched_book_names
     ));
+    debug_log(format!("matched book id(s): {:?}", matched_book_ids));
     if matched_books.is_empty() {
         return Ok(None);
     }
@@ -264,6 +297,7 @@ fn try_kjv_schema_search(
     } else {
         None
     };
+    let include_translation_filter = translation_col.is_some() && translation_filter.is_some();
 
     let sql = build_kjv_schema_query(
         chapter_col,
@@ -272,6 +306,7 @@ fn try_kjv_schema_search(
         book_fk_col,
         matched_books.len(),
         translation_col,
+        include_translation_filter,
     );
     debug_log(format!("sql path used: {sql}"));
 
@@ -283,17 +318,13 @@ fn try_kjv_schema_search(
     bind_values.push(Value::Integer(verse_start));
     bind_values.push(Value::Integer(verse_end));
 
-    if translation_col.is_some() {
-        if let Some((translation_sql, translation_id)) = translation_filter {
-            debug_log(format!(
-                "translation filter found using query [{translation_sql}] with id={translation_id}"
-            ));
-            bind_values.push(Value::Integer(translation_id));
-        } else {
-            debug_log(
-                "translation column exists but KJV translation id was not found; skipping filter",
-            );
-        }
+    if let Some((translation_sql, translation_id)) = translation_filter {
+        debug_log(format!(
+            "translation filter found using query [{translation_sql}] with id={translation_id}"
+        ));
+        bind_values.push(Value::Integer(translation_id));
+    } else if translation_col.is_some() {
+        debug_log("translation column exists but KJV translation id was not found; skipping filter");
     }
 
     let mut statement = conn
