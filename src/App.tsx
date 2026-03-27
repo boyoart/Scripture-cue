@@ -146,6 +146,9 @@ export default function App() {
         canonicalBook: normalized.canonicalBook || "(none)",
         confidence: normalized.confidence
       });
+      if (normalized.query.chapter && normalized.query.canonicalBook) {
+        setQueryInput(normalized.normalizedReference);
+      }
 
       if (!normalized.query.chapter || !normalized.query.canonicalBook || normalized.confidence < 0.65) {
         setMicState("listening");
