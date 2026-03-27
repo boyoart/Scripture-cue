@@ -1,3 +1,6 @@
-# Display Feature (Placeholder)
+# Display Feature
 
-Module scaffold for presenter-focused verse rendering.
+Builds presenter-friendly verse preview metadata from search results.
+
+## Current implementation
+- Produces normalized metadata for reference, translation name/source, status, and verse count.
