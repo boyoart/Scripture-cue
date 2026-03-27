@@ -1,5 +1,7 @@
 export type QueryType = "exact_reference" | "spoken_reference" | "phrase";
 
+export type MatchType = "exact_reference" | "spoken_reference" | "phrase" | "none";
+
 export interface VerseQuery {
   kind: QueryType;
   raw: string;

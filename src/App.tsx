@@ -1,12 +1,57 @@
+import { useMemo, useState } from "react";
 import HistoryList from "./components/HistoryList";
 import PanelCard from "./components/PanelCard";
+import { verseSearchService } from "./features/search";
+import type { VerseResult } from "./types/verse";
 
-const verseText = `The Lord is my shepherd, I lack nothing.
-He makes me lie down in green pastures,
-he leads me beside quiet waters,
-he refreshes my soul.`;
+function formatPreview(results: VerseResult[]): string {
+  return results.map((result) => `${result.reference} ${result.text}`).join("\n\n");
+}
 
 export default function App() {
+  const [input, setInput] = useState("");
+  const [translationCode, setTranslationCode] = useState("KJV");
+  const [status, setStatus] = useState<"idle" | "searching" | "found" | "not_found">("idle");
+  const [results, setResults] = useState<VerseResult[]>([]);
+  const [queryDebug, setQueryDebug] = useState<string>("{}");
+
+  const primaryResult = results[0];
+
+  const metadata = useMemo(
+    () => ({
+      reference: results.length > 1 ? `${results[0].reference}...` : primaryResult?.reference ?? "—",
+      translation: primaryResult?.translationCode ?? translationCode,
+      status:
+        status === "idle"
+          ? "Waiting"
+          : status === "searching"
+            ? "Searching"
+            : status === "found"
+              ? "Previewed"
+              : "No Result",
+      matchType: primaryResult?.matchType ?? "none",
+      confidence:
+        typeof primaryResult?.confidence === "number"
+          ? `${Math.round(primaryResult.confidence * 100)}%`
+          : "—"
+    }),
+    [primaryResult, results, status, translationCode]
+  );
+
+  async function runSearch() {
+    if (!input.trim()) {
+      setStatus("idle");
+      setResults([]);
+      return;
+    }
+
+    setStatus("searching");
+    const outcome = await verseSearchService.resolve(input, translationCode);
+    setQueryDebug(JSON.stringify(outcome.query, null, 2));
+    setResults(outcome.results);
+    setStatus(outcome.status);
+  }
+
   return (
     <main className="app-shell">
       <header className="app-shell__topbar">
@@ -14,7 +59,7 @@ export default function App() {
           <p className="eyebrow">Scripture Cue</p>
           <h1>Presentation Operator Console</h1>
         </div>
-        <span className="service-pill">Live Session Ready</span>
+        <span className="service-pill">Local Bible DB Ready</span>
       </header>
 
       <div className="workspace-grid">
@@ -25,9 +70,19 @@ export default function App() {
                 Search
               </label>
               <div className="search-row">
-                <input id="query-input" placeholder="Type verse reference or keywords" />
-                <button type="button" className="icon-button" aria-label="Start voice search">
-                  🎙
+                <input
+                  id="query-input"
+                  placeholder="Try: John 3:16 or First Corinthians 13 verse 4"
+                  value={input}
+                  onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void runSearch();
+                    }
+                  }}
+                />
+                <button type="button" className="icon-button" onClick={() => void runSearch()}>
+                  Go
                 </button>
               </div>
             </div>
@@ -36,12 +91,18 @@ export default function App() {
               <label htmlFor="translation" className="field-label">
                 Translation
               </label>
-              <select id="translation" defaultValue="NIV">
-                <option value="NIV">NIV</option>
-                <option value="ESV">ESV</option>
+              <select
+                id="translation"
+                value={translationCode}
+                onChange={(event) => setTranslationCode(event.target.value)}
+              >
                 <option value="KJV">KJV</option>
-                <option value="NLT">NLT</option>
               </select>
+            </div>
+
+            <div className="parser-debug" aria-label="Parser debug output">
+              <p className="field-label">Parser Debug</p>
+              <pre>{queryDebug}</pre>
             </div>
           </PanelCard>
 
@@ -57,7 +118,11 @@ export default function App() {
             className="preview-card"
           >
             <article className="verse-preview">
-              <p>{verseText}</p>
+              {status === "not_found"
+                ? "No local verse match was found. Try a direct reference or a phrase from seeded passages."
+                : results.length > 0
+                  ? formatPreview(results)
+                  : "Your selected verse will appear here after search."}
             </article>
           </PanelCard>
 
@@ -65,19 +130,23 @@ export default function App() {
             <dl className="metadata-grid">
               <div>
                 <dt>Reference</dt>
-                <dd>Psalm 23:1-3</dd>
+                <dd>{metadata.reference}</dd>
               </div>
               <div>
                 <dt>Translation</dt>
-                <dd>NIV</dd>
-              </div>
-              <div>
-                <dt>Theme</dt>
-                <dd>Comfort & Assurance</dd>
+                <dd>{metadata.translation}</dd>
               </div>
               <div>
                 <dt>Status</dt>
-                <dd>Previewed</dd>
+                <dd>{metadata.status}</dd>
+              </div>
+              <div>
+                <dt>Match</dt>
+                <dd>{metadata.matchType}</dd>
+              </div>
+              <div>
+                <dt>Confidence</dt>
+                <dd>{metadata.confidence}</dd>
               </div>
             </dl>
           </PanelCard>

@@ -223,3 +223,19 @@ select {
     min-height: unset;
   }
 }
+
+.parser-debug {
+  margin-top: 0.9rem;
+}
+
+.parser-debug pre {
+  margin: 0;
+  padding: 0.7rem;
+  border: 1px solid #334173;
+  border-radius: 10px;
+  background: #0b122b;
+  font-size: 0.75rem;
+  color: #b9c6f8;
+  max-height: 180px;
+  overflow: auto;
+}
