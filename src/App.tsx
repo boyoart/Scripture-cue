@@ -1,12 +1,78 @@
+import { useEffect, useMemo, useState } from "react";
 import HistoryList from "./components/HistoryList";
 import PanelCard from "./components/PanelCard";
+import { parseQuery } from "./features/parser";
+import { searchBundledBible, fetchBundledTranslations } from "./features/search";
+import { captureSpeechInput } from "./features/speech";
+import type { VerseResult } from "./types/verse";
 
-const verseText = `The Lord is my shepherd, I lack nothing.
-He makes me lie down in green pastures,
-he leads me beside quiet waters,
-he refreshes my soul.`;
+interface TranslationOption {
+  code: string;
+  name: string;
+  language: string;
+  isDefault: boolean;
+}
 
 export default function App() {
+  const [queryText, setQueryText] = useState("");
+  const [translations, setTranslations] = useState<TranslationOption[]>([]);
+  const [selectedTranslation, setSelectedTranslation] = useState("KJV");
+  const [results, setResults] = useState<VerseResult[]>([]);
+  const [status, setStatus] = useState("Ready");
+
+  useEffect(() => {
+    fetchBundledTranslations().then((loaded) => {
+      setTranslations(loaded);
+      const defaultTranslation = loaded.find((item) => item.isDefault)?.code ?? loaded[0]?.code ?? "KJV";
+      setSelectedTranslation(defaultTranslation);
+    });
+  }, []);
+
+  const topResult = results[0];
+
+  const metadata = useMemo(
+    () => ({
+      reference: topResult?.reference ?? "—",
+      translation: topResult?.translationCode ?? selectedTranslation,
+      theme: topResult ? "Search Result" : "Awaiting Query",
+      status: topResult ? "Previewed" : status
+    }),
+    [topResult, selectedTranslation, status]
+  );
+
+  async function runSearch(rawInput: string): Promise<void> {
+    const trimmed = rawInput.trim();
+    if (!trimmed) {
+      setResults([]);
+      setStatus("Enter a verse reference or phrase.");
+      return;
+    }
+
+    setStatus("Searching bundled Bible database...");
+
+    const parsed = parseQuery(trimmed, selectedTranslation);
+    const found = await searchBundledBible(parsed);
+
+    setResults(found);
+    setStatus(found.length > 0 ? `Found ${found.length} verse(s).` : "No verses found.");
+  }
+
+  async function onUseMicrophone(): Promise<void> {
+    setStatus("Listening...");
+    try {
+      const speech = await captureSpeechInput();
+      if (!speech.transcript) {
+        setStatus("No speech detected.");
+        return;
+      }
+
+      setQueryText(speech.transcript);
+      await runSearch(speech.transcript);
+    } catch {
+      setStatus("Microphone recognition unavailable in this environment.");
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="app-shell__topbar">
@@ -14,7 +80,7 @@ export default function App() {
           <p className="eyebrow">Scripture Cue</p>
           <h1>Presentation Operator Console</h1>
         </div>
-        <span className="service-pill">Live Session Ready</span>
+        <span className="service-pill">{status}</span>
       </header>
 
       <div className="workspace-grid">
@@ -25,9 +91,22 @@ export default function App() {
                 Search
               </label>
               <div className="search-row">
-                <input id="query-input" placeholder="Type verse reference or keywords" />
-                <button type="button" className="icon-button" aria-label="Start voice search">
+                <input
+                  id="query-input"
+                  placeholder="Type verse reference or keywords"
+                  value={queryText}
+                  onChange={(event) => setQueryText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      void runSearch(queryText);
+                    }
+                  }}
+                />
+                <button type="button" className="icon-button" aria-label="Start voice search" onClick={() => void onUseMicrophone()}>
                   🎙
+                </button>
+                <button type="button" className="icon-button" aria-label="Search" onClick={() => void runSearch(queryText)}>
+                  🔍
                 </button>
               </div>
             </div>
@@ -36,11 +115,16 @@ export default function App() {
               <label htmlFor="translation" className="field-label">
                 Translation
               </label>
-              <select id="translation" defaultValue="NIV">
-                <option value="NIV">NIV</option>
-                <option value="ESV">ESV</option>
-                <option value="KJV">KJV</option>
-                <option value="NLT">NLT</option>
+              <select
+                id="translation"
+                value={selectedTranslation}
+                onChange={(event) => setSelectedTranslation(event.target.value)}
+              >
+                {translations.map((translation) => (
+                  <option key={translation.code} value={translation.code}>
+                    {translation.code} — {translation.name}
+                  </option>
+                ))}
               </select>
             </div>
           </PanelCard>
@@ -57,7 +141,7 @@ export default function App() {
             className="preview-card"
           >
             <article className="verse-preview">
-              <p>{verseText}</p>
+              <p>{results.map((item) => item.text).join("\n") || "Your selected verse will appear here after search."}</p>
             </article>
           </PanelCard>
 
@@ -65,19 +149,19 @@ export default function App() {
             <dl className="metadata-grid">
               <div>
                 <dt>Reference</dt>
-                <dd>Psalm 23:1-3</dd>
+                <dd>{metadata.reference}</dd>
               </div>
               <div>
                 <dt>Translation</dt>
-                <dd>NIV</dd>
+                <dd>{metadata.translation}</dd>
               </div>
               <div>
                 <dt>Theme</dt>
-                <dd>Comfort & Assurance</dd>
+                <dd>{metadata.theme}</dd>
               </div>
               <div>
                 <dt>Status</dt>
-                <dd>Previewed</dd>
+                <dd>{metadata.status}</dd>
               </div>
             </dl>
           </PanelCard>

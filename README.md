@@ -1,13 +1,12 @@
-# Scripture Cue (Module 1 Scaffold)
+# Scripture Cue (Bundled Bible DB Upgrade)
 
 Windows-first desktop scaffold for **Scripture Cue**, built with **Tauri + React + TypeScript + Vite**.
 
 ## MVP Scope in this module
-- Desktop shell setup (Tauri)
-- React UI starter screen
-- Dark theme baseline
-- Organized architecture folders for upcoming modules
-- Core query/result/provider interfaces
+- Bundled SQLite Bible database resource for desktop packaging.
+- Translation-aware search commands in Tauri (`get_translations`, `search_verses`).
+- React UI wiring for typed search + microphone capture + parser + bundled DB search.
+- Translation selector now sourced from bundled translations.
 
 ## Prerequisites
 - Node.js 20+
@@ -37,27 +36,19 @@ npm run build
 npm run tauri:build
 ```
 
-## Project Structure
-```text
-src/
-  components/
-  pages/
-  features/
-    speech/
-    parser/
-    search/
-    display/
-    settings/
-    history/
-  services/
-  stores/
-  types/
-  utils/
-  styles/
-src-tauri/
+## Bible DB Resource
+- Resource path: `src-tauri/resources/bibles/bible.db`
+- Regenerate starter DB seed:
+```bash
+python scripts/build_bible_db.py
 ```
 
+## Database schema
+- `translations`
+- `books`
+- `verses`
+- `book_aliases`
+
 ## Current Module Limitations
-- No real speech recognition provider yet.
-- No real Bible search provider yet.
-- No fullscreen presenter behavior yet.
+- Repository currently seeds a starter KJV/WEB dataset to keep source size small.
+- Full-corpus ingestion script can be layered on top of `scripts/build_bible_db.py` when licensed/public-domain source files are available in your environment.
