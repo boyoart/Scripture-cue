@@ -1,1 +1,6 @@
-export const SEARCH_FEATURE_READY = false;
+export { searchScripture, type SearchResult } from "./searchScripture";
+export {
+  getTranslationRecords,
+  type TranslationCode,
+  type VerseRecord
+} from "./localBibleDb";

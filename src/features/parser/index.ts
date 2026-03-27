@@ -1,1 +1,1 @@
-export const PARSER_FEATURE_READY = false;
+export { parseSpeechQuery, type ParsedSearchQuery } from "./parseSpeechQuery";
