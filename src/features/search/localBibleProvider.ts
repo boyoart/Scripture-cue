@@ -10,6 +10,14 @@ type KjvVerseRow = {
   text: string;
 };
 
+type SearchKjvPayload = {
+  book: string;
+  chapter: number;
+  verseStart: number;
+  verseEnd: number;
+  translation: TranslationCode;
+};
+
 type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
 declare global {
@@ -50,8 +58,9 @@ function getInvoke(): InvokeFn | null {
 export const localBibleProvider: BibleProvider = {
   async search(query: VerseQuery): Promise<VerseResult[]> {
     const translationCode = DEFAULT_TRANSLATION;
+    const book = query.book ?? query.canonicalBook;
 
-    if (!query.canonicalBook || !query.chapter) {
+    if (!book || !query.chapter) {
       return [];
     }
 
@@ -65,20 +74,22 @@ export const localBibleProvider: BibleProvider = {
 
     let rows: KjvVerseRow[] = [];
 
-    const requestPayload = {
-      canonicalBook: query.canonicalBook,
+    const requestPayload: SearchKjvPayload = {
+      book,
       chapter: query.chapter,
       verseStart,
-      verseEnd
+      verseEnd,
+      translation: translationCode
     };
 
-    console.debug("[search_kjv] incoming search payload", {
+    console.debug("[search_kjv] frontend outgoing search payload", {
       request: requestPayload,
       rawQuery: query.raw,
       normalized: query.normalized
     });
 
     try {
+      console.debug("[search_kjv] tauri invoke payload", requestPayload);
       rows = await invoke<KjvVerseRow[]>("search_kjv", {
         request: requestPayload
       });
@@ -87,7 +98,8 @@ export const localBibleProvider: BibleProvider = {
       return [];
     }
 
-    console.debug("[search_kjv] SQL result count", rows.length);
+    console.debug("[search_kjv] frontend received result payload", rows);
+    console.debug("[search_kjv] frontend SQL row count", rows.length);
 
     if (rows.length === 0) {
       return [];
@@ -98,8 +110,8 @@ export const localBibleProvider: BibleProvider = {
 
     const mapped = [
       {
-        id: `${translationCode}-${query.canonicalBook}-${query.chapter}-${firstVerse}-${lastVerse}`,
-        reference: toReference(query.canonicalBook, query.chapter, firstVerse, lastVerse),
+        id: `${translationCode}-${book}-${query.chapter}-${firstVerse}-${lastVerse}`,
+        reference: toReference(book, query.chapter, firstVerse, lastVerse),
         translationCode,
         text: rows.map((row) => row.text).join(" "),
         confidence: query.confidence ?? 0.95
