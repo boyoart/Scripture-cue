@@ -37,16 +37,6 @@ function toReference(book: string, chapter: number, verseStart: number, verseEnd
     : `${book} ${chapter}:${verseStart}`;
 }
 
-function asResults(rows: KjvVerseRow[], translationCode: TranslationCode): VerseResult[] {
-  return rows.map((row) => ({
-    id: `${translationCode}-${row.book}-${row.chapter}-${row.verse}`,
-    reference: `${row.book} ${row.chapter}:${row.verse}`,
-    translationCode,
-    text: row.text,
-    confidence: 1
-  }));
-}
-
 function getInvoke(): InvokeFn | null {
   if (typeof window === "undefined") {
     return null;
@@ -57,7 +47,7 @@ function getInvoke(): InvokeFn | null {
 
 export const localBibleProvider: BibleProvider = {
   async search(query: VerseQuery): Promise<VerseResult[]> {
-    const translationCode = DEFAULT_TRANSLATION;
+    const translationCode = (query.translationCode as TranslationCode | undefined) ?? DEFAULT_TRANSLATION;
     const book = query.book ?? query.canonicalBook;
 
     if (!book || !query.chapter) {
@@ -99,7 +89,7 @@ export const localBibleProvider: BibleProvider = {
     }
 
     console.debug("[search_kjv] frontend received result payload", rows);
-    console.debug("[search_kjv] frontend SQL row count", rows.length);
+    console.debug("[search_kjv] SQL row count returned", rows.length);
 
     if (rows.length === 0) {
       return [];
@@ -108,19 +98,17 @@ export const localBibleProvider: BibleProvider = {
     const firstVerse = rows[0].verse;
     const lastVerse = rows[rows.length - 1].verse;
 
-    const mapped = [
-      {
-        id: `${translationCode}-${book}-${query.chapter}-${firstVerse}-${lastVerse}`,
-        reference: toReference(book, query.chapter, firstVerse, lastVerse),
-        translationCode,
-        text: rows.map((row) => row.text).join(" "),
-        confidence: query.confidence ?? 0.95
-      },
-      ...asResults(rows, translationCode)
-    ];
+    const mapped: VerseResult = {
+      id: `${translationCode}-${book}-${query.chapter}-${firstVerse}-${lastVerse}`,
+      reference: toReference(book, query.chapter, firstVerse, lastVerse),
+      translationCode,
+      text: rows.map((row) => row.text).join(" "),
+      verses: rows,
+      confidence: query.confidence ?? 0.95
+    };
 
-    console.debug("[search_kjv] final UI result payload", mapped[0]);
+    console.debug("[search_kjv] final UI result payload", mapped);
 
-    return mapped;
+    return [mapped];
   }
 };
