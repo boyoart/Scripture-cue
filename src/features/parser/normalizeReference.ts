@@ -6,6 +6,12 @@ type NormalizedResult = {
   normalizedReference: string;
   confidence: number;
   canonicalBook?: string;
+  structuredReference?: {
+    book: string;
+    chapter: number;
+    verseStart: number;
+    verseEnd: number;
+  };
 };
 
 type BookAlias = {
@@ -32,7 +38,7 @@ const BOOK_ALIASES: BookAlias[] = [
   { canonical: "Nehemiah", aliases: ["nehemiah", "neh"] },
   { canonical: "Esther", aliases: ["esther"] },
   { canonical: "Job", aliases: ["job"] },
-  { canonical: "Psalm", aliases: ["psalm", "psalms", "psalm's", "ps"] },
+  { canonical: "Psalms", aliases: ["psalm", "psalms", "psalm's", "ps"] },
   { canonical: "Proverbs", aliases: ["proverbs", "prov"] },
   { canonical: "Ecclesiastes", aliases: ["ecclesiastes", "eccl"] },
   { canonical: "Song of Solomon", aliases: ["song of solomon", "song", "song of songs"] },
@@ -237,17 +243,6 @@ function parseReferenceParts(remaining: string): {
     };
   }
 
-  const compactMatch = remaining.match(/^(\d{3,4})$/);
-  if (compactMatch) {
-    const compact = compactMatch[1];
-    const splitAt = compact.length === 3 ? 1 : 2;
-    return {
-      chapter: Number(compact.slice(0, splitAt)),
-      verseStart: Number(compact.slice(splitAt)),
-      confidenceBoost: 0.24
-    };
-  }
-
   const chapterLabelMatch = remaining.match(/\bchapter\s+([a-z0-9 -]+?)(?=\s+verse\b|$)/);
   const verseLabelMatch = remaining.match(/\bverse\s+([a-z0-9 -]+)$/);
   if (chapterLabelMatch) {
@@ -361,12 +356,22 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
   const normalizedReference = parts.chapter
     ? toReferenceString(bookMatch.canonicalBook, parts.chapter, parts.verseStart, parts.verseEnd)
     : bookMatch.canonicalBook;
+  const structuredReference =
+    parts.chapter && parts.verseStart
+      ? {
+          book: bookMatch.canonicalBook,
+          chapter: parts.chapter,
+          verseStart: parts.verseStart,
+          verseEnd: parts.verseEnd ?? parts.verseStart
+        }
+      : undefined;
 
   return {
     rawTranscript,
     normalizedReference,
     canonicalBook: bookMatch.canonicalBook,
     confidence,
+    structuredReference,
     query: {
       kind: "spoken_reference",
       raw: rawTranscript,
@@ -374,7 +379,7 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
       canonicalBook: bookMatch.canonicalBook,
       chapter: parts.chapter,
       verseStart: parts.verseStart,
-      verseEnd: parts.verseEnd,
+      verseEnd: parts.verseEnd ?? parts.verseStart,
       translationCode,
       confidence
     }
@@ -382,5 +387,12 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
 }
 
 export function normalizeTypedReference(input: string, translationCode: string): NormalizedResult {
-  return normalizeTranscriptToReference(input, translationCode);
+  const normalized = normalizeTranscriptToReference(input, translationCode);
+  return {
+    ...normalized,
+    query: {
+      ...normalized.query,
+      kind: "exact_reference"
+    }
+  };
 }

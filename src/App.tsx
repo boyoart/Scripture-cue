@@ -19,7 +19,15 @@ export default function App() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [activeResult, setActiveResult] = useState<VerseResult | null>(null);
   const [statusText, setStatusText] = useState("Ready for input");
-  const [debugInfo, setDebugInfo] = useState({ raw: "", normalized: "", canonicalBook: "", confidence: 0 });
+  const [debugInfo, setDebugInfo] = useState({
+    raw: "",
+    normalized: "",
+    canonicalBook: "",
+    chapter: "-",
+    verseStart: "-",
+    verseEnd: "-",
+    confidence: 0
+  });
   const [liveEnabled, setLiveEnabled] = useState(false);
   const translationRef = useRef(translation);
   const queryInputRef = useRef(queryInput);
@@ -55,6 +63,9 @@ export default function App() {
       raw: normalized.rawTranscript,
       normalized: normalized.normalizedReference,
       canonicalBook: normalized.canonicalBook || "(none)",
+      chapter: normalized.structuredReference?.chapter?.toString() || "-",
+      verseStart: normalized.structuredReference?.verseStart?.toString() || "-",
+      verseEnd: normalized.structuredReference?.verseEnd?.toString() || "-",
       confidence: normalized.confidence
     });
 
@@ -144,6 +155,9 @@ export default function App() {
         raw: normalized.rawTranscript,
         normalized: normalized.normalizedReference,
         canonicalBook: normalized.canonicalBook || "(none)",
+        chapter: normalized.structuredReference?.chapter?.toString() || "-",
+        verseStart: normalized.structuredReference?.verseStart?.toString() || "-",
+        verseEnd: normalized.structuredReference?.verseEnd?.toString() || "-",
         confidence: normalized.confidence
       });
       if (normalized.query.chapter && normalized.query.canonicalBook) {
@@ -304,6 +318,18 @@ export default function App() {
                 <div>
                   <dt>Parser confidence</dt>
                   <dd>{debugInfo.confidence.toFixed(2)}</dd>
+                </div>
+                <div>
+                  <dt>Chapter</dt>
+                  <dd>{debugInfo.chapter}</dd>
+                </div>
+                <div>
+                  <dt>Verse start</dt>
+                  <dd>{debugInfo.verseStart}</dd>
+                </div>
+                <div>
+                  <dt>Verse end</dt>
+                  <dd>{debugInfo.verseEnd}</dd>
                 </div>
               </dl>
             </PanelCard>
