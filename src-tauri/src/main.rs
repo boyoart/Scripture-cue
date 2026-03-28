@@ -56,11 +56,7 @@ fn numbered_book_variants(book: &str) -> Vec<String> {
 
 fn spoken_numbered_book_variants(book: &str) -> Vec<String> {
     let mut variants = vec![book.to_string()];
-    let prefixes = [
-        ("first ", "1 "),
-        ("second ", "2 "),
-        ("third ", "3 "),
-    ];
+    let prefixes = [("first ", "1 "), ("second ", "2 "), ("third ", "3 ")];
 
     let lower = book.to_lowercase();
     for (needle, replacement) in prefixes {
@@ -181,6 +177,26 @@ fn resolve_book_matches(
     matches
 }
 
+fn find_exact_book_matches(
+    books: &[(i64, String, String)],
+    canonical_book: &str,
+) -> Vec<(i64, String)> {
+    let variants = book_variants(canonical_book);
+    let mut exact_matches = Vec::new();
+
+    for variant in variants {
+        for (book_id, book_name, _) in books {
+            if book_name.eq_ignore_ascii_case(&variant) {
+                exact_matches.push((*book_id, book_name.clone()));
+            }
+        }
+    }
+
+    exact_matches.sort_by(|a, b| a.0.cmp(&b.0));
+    exact_matches.dedup_by(|a, b| a.0 == b.0);
+    exact_matches
+}
+
 fn resolve_kjv_translation_id(
     conn: &Connection,
     translations_columns: &[String],
@@ -271,17 +287,24 @@ fn try_kjv_schema_search(
     };
 
     let books = load_kjv_books(conn)?;
-    let matched_books = resolve_book_matches(&books, canonical_book);
-    let matched_book_names: Vec<String> = matched_books
-        .iter()
-        .map(|(_, name)| name.clone())
-        .collect();
+    let exact_book_matches = find_exact_book_matches(&books, canonical_book);
+    let matched_books = if exact_book_matches.is_empty() {
+        resolve_book_matches(&books, canonical_book)
+    } else {
+        exact_book_matches
+    };
+
+    let matched_book_names: Vec<String> =
+        matched_books.iter().map(|(_, name)| name.clone()).collect();
     let matched_book_ids: Vec<i64> = matched_books.iter().map(|(id, _)| *id).collect();
+
     debug_log(format!(
-        "matched book name(s) for {canonical_book}: {:?}",
-        matched_book_names
+        "mapped DB book name candidates for {canonical_book}: {:?}",
+        book_variants(canonical_book)
     ));
-    debug_log(format!("matched book id(s): {:?}", matched_book_ids));
+    debug_log(format!("matched book row names: {:?}", matched_book_names));
+    debug_log(format!("matched book row ids: {:?}", matched_book_ids));
+
     if matched_books.is_empty() {
         return Ok(None);
     }
@@ -324,7 +347,9 @@ fn try_kjv_schema_search(
         ));
         bind_values.push(Value::Integer(translation_id));
     } else if translation_col.is_some() {
-        debug_log("translation column exists but KJV translation id was not found; skipping filter");
+        debug_log(
+            "translation column exists but KJV translation id was not found; skipping filter",
+        );
     }
 
     let mut statement = conn
@@ -454,6 +479,11 @@ fn search_kjv(
     app_handle: tauri::AppHandle,
     request: SearchKjvRequest,
 ) -> Result<Vec<VerseRow>, String> {
+    debug_log(format!(
+        "incoming search payload: canonical_book='{}', chapter={}, verse_start={}, verse_end={}",
+        request.canonical_book, request.chapter, request.verse_start, request.verse_end
+    ));
+
     let db_path = app_handle
         .path_resolver()
         .resolve_resource("bibles/KJV.db")
@@ -462,13 +492,17 @@ fn search_kjv(
     let conn =
         Connection::open(db_path).map_err(|error| format!("Failed to open KJV.db: {error}"))?;
 
-    query_kjv_db(
+    let rows = query_kjv_db(
         &conn,
         &request.canonical_book,
         request.chapter,
         request.verse_start,
         request.verse_end,
-    )
+    )?;
+
+    debug_log(format!("final UI result payload rows: {}", rows.len()));
+
+    Ok(rows)
 }
 
 fn main() {

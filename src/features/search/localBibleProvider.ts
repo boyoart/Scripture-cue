@@ -16,6 +16,9 @@ declare global {
   interface Window {
     __TAURI__?: {
       invoke?: InvokeFn;
+      tauri?: {
+        invoke?: InvokeFn;
+      };
     };
   }
 }
@@ -41,7 +44,7 @@ function getInvoke(): InvokeFn | null {
     return null;
   }
 
-  return window.__TAURI__?.invoke ?? null;
+  return window.__TAURI__?.invoke ?? window.__TAURI__?.tauri?.invoke ?? null;
 }
 
 export const localBibleProvider: BibleProvider = {
@@ -62,18 +65,29 @@ export const localBibleProvider: BibleProvider = {
 
     let rows: KjvVerseRow[] = [];
 
+    const requestPayload = {
+      canonicalBook: query.canonicalBook,
+      chapter: query.chapter,
+      verseStart,
+      verseEnd
+    };
+
+    console.debug("[search_kjv] incoming search payload", {
+      request: requestPayload,
+      rawQuery: query.raw,
+      normalized: query.normalized
+    });
+
     try {
       rows = await invoke<KjvVerseRow[]>("search_kjv", {
-        request: {
-          canonicalBook: query.canonicalBook,
-          chapter: query.chapter,
-          verseStart,
-          verseEnd
-        }
+        request: requestPayload
       });
-    } catch {
+    } catch (error) {
+      console.debug("[search_kjv] invoke failed", error);
       return [];
     }
+
+    console.debug("[search_kjv] SQL result count", rows.length);
 
     if (rows.length === 0) {
       return [];
@@ -82,7 +96,7 @@ export const localBibleProvider: BibleProvider = {
     const firstVerse = rows[0].verse;
     const lastVerse = rows[rows.length - 1].verse;
 
-    return [
+    const mapped = [
       {
         id: `${translationCode}-${query.canonicalBook}-${query.chapter}-${firstVerse}-${lastVerse}`,
         reference: toReference(query.canonicalBook, query.chapter, firstVerse, lastVerse),
@@ -92,5 +106,9 @@ export const localBibleProvider: BibleProvider = {
       },
       ...asResults(rows, translationCode)
     ];
+
+    console.debug("[search_kjv] final UI result payload", mapped[0]);
+
+    return mapped;
   }
 };
