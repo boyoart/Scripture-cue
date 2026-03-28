@@ -84,7 +84,7 @@ export default function App() {
 
     const previewResult = results[0];
     setActiveResult(previewResult);
-    console.debug("[search_kjv] final rendered verse count", Math.max(0, results.length - 1));
+    console.debug("[search_kjv] final rendered verse count", previewResult.verses.length);
     setStatusText(`Loaded ${previewResult.reference} (${previewResult.translationCode})`);
     setHistory((prev: HistoryEntry[]) =>
       addHistoryEntry(prev, {
@@ -348,7 +348,17 @@ export default function App() {
             className="preview-card"
           >
             <article className={`verse-preview ${activeResult ? "" : "verse-preview--empty"}`.trim()}>
-              {activeResult ? <p>{activeResult.text}</p> : <p>No result loaded yet.</p>}
+              {activeResult ? (
+                <p>
+                  {activeResult.verses.map((verse) => (
+                    <span key={`${verse.book}-${verse.chapter}-${verse.verse}`}>
+                      <sup>{verse.verse}</sup> {verse.text}{" "}
+                    </span>
+                  ))}
+                </p>
+              ) : (
+                <p>No result loaded yet.</p>
+              )}
             </article>
           </PanelCard>
 
@@ -369,6 +379,10 @@ export default function App() {
               <div>
                 <dt>Status</dt>
                 <dd>{activeResult ? "Previewed" : "No Result"}</dd>
+              </div>
+              <div>
+                <dt>Verse Count</dt>
+                <dd>{activeResult?.verses.length ?? 0}</dd>
               </div>
             </dl>
           </PanelCard>
