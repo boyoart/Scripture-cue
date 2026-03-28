@@ -84,6 +84,7 @@ export default function App() {
 
     const previewResult = results[0];
     setActiveResult(previewResult);
+    console.debug("[search_kjv] final rendered verse count", Math.max(0, results.length - 1));
     setStatusText(`Loaded ${previewResult.reference} (${previewResult.translationCode})`);
     setHistory((prev: HistoryEntry[]) =>
       addHistoryEntry(prev, {
@@ -160,11 +161,15 @@ export default function App() {
         verseEnd: normalized.structuredReference?.verseEnd?.toString() || "-",
         confidence: normalized.confidence
       });
-      if (normalized.query.chapter && normalized.query.canonicalBook) {
+      if (normalized.query.chapter && (normalized.query.book || normalized.query.canonicalBook)) {
         setQueryInput(normalized.normalizedReference);
       }
 
-      if (!normalized.query.chapter || !normalized.query.canonicalBook || normalized.confidence < 0.65) {
+      if (
+        !normalized.query.chapter ||
+        !(normalized.query.book || normalized.query.canonicalBook) ||
+        normalized.confidence < 0.65
+      ) {
         setMicState("listening");
         setStatusText(`Listening... confidence ${normalized.confidence.toFixed(2)} too low for auto-search.`);
         return;

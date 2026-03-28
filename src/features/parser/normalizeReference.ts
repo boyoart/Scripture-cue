@@ -376,6 +376,7 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
       kind: "spoken_reference",
       raw: rawTranscript,
       normalized: normalizedReference,
+      book: bookMatch.canonicalBook,
       canonicalBook: bookMatch.canonicalBook,
       chapter: parts.chapter,
       verseStart: parts.verseStart,

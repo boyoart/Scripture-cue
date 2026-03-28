@@ -4,6 +4,7 @@ export interface VerseQuery {
   kind: QueryType;
   raw: string;
   normalized?: string;
+  book?: string;
   canonicalBook?: string;
   chapter?: number;
   verseStart?: number;
