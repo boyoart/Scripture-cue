@@ -33,6 +33,8 @@ export default function App() {
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
   const [speechDebug, setSpeechDebug] = useState<NormalizedResult | null>(null);
   const [listeningState, setListeningState] = useState<ListeningWorkflowState>("idle");
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [showPresentationReference, setShowPresentationReference] = useState(true);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
   const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
@@ -206,17 +208,49 @@ export default function App() {
     }
   }, [listeningState]);
 
-  return (
-    <div className="app-shell">
-      <header className="app-shell__topbar">
-        <div>
-          <p className="eyebrow">SCRIPTURE CUE</p>
-          <h1>Presentation Operator Console</h1>
-        </div>
-        <div className="service-pill">{status}</div>
-      </header>
+  const togglePresentationMode = useCallback(async () => {
+    const root = document.documentElement;
 
-      <div className="workspace-grid">
+    if (!document.fullscreenElement) {
+      await root.requestFullscreen();
+      setIsPresentationMode(true);
+      return;
+    }
+
+    await document.exitFullscreen();
+    setIsPresentationMode(false);
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsPresentationMode(Boolean(document.fullscreenElement));
+    };
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  return (
+    <>
+      <div className={`app-shell ${isPresentationMode ? "app-shell--presentation-active" : ""}`}>
+        <header className="app-shell__topbar">
+          <div>
+            <p className="eyebrow">SCRIPTURE CUE</p>
+            <h1>Presentation Operator Console</h1>
+          </div>
+          <div className="topbar-actions">
+            <div className="service-pill">{status}</div>
+            <button
+              className="present-button"
+              onClick={() => void togglePresentationMode()}
+              disabled={isLoading}
+            >
+              {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
+            </button>
+          </div>
+        </header>
+
+        <div className="workspace-grid">
         <div className="workspace-column">
           <section className="panel-card">
             <header className="panel-card__header">
@@ -278,6 +312,15 @@ export default function App() {
                   <option value="KJV">KJV</option>
                 </select>
               </div>
+
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={showPresentationReference}
+                  onChange={(e) => setShowPresentationReference(e.target.checked)}
+                />
+                Show reference in presenter view
+              </label>
             </div>
           </section>
 
@@ -406,7 +449,24 @@ export default function App() {
             </div>
           </section>
         </div>
+        </div>
       </div>
-    </div>
+
+      {isPresentationMode ? (
+        <section className="presentation-mode" aria-live="polite">
+          <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>
+            Exit Fullscreen
+          </button>
+          <div className="presentation-mode__content">
+            {showPresentationReference ? (
+              <p className="presentation-mode__reference">{result.reference}</p>
+            ) : null}
+            <pre className={`presentation-mode__verse ${result.found ? "" : "presentation-mode__verse--empty"}`}>
+              {verseText}
+            </pre>
+          </div>
+        </section>
+      ) : null}
+    </>
   );
 }
