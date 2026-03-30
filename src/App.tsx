@@ -17,6 +17,7 @@ import {
   type ProjectorPayload,
   type ReferencePlacement
 } from "./features/display/projectorSync";
+import { readAppSettings, settingsFromSnapshot, writeAppSettings } from "./features/settings";
 import {
   addSessionLogEntry,
   formatSessionTimestamp,
@@ -48,6 +49,7 @@ const EMPTY_RESULT: SearchResult = {
 };
 
 export default function App() {
+  const initialSettings = useMemo(() => readAppSettings(), []);
   const [reference, setReference] = useState("John 3:16");
   const [result, setResult] = useState<SearchResult>(EMPTY_RESULT);
   const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -60,13 +62,18 @@ export default function App() {
   const [speechDebug, setSpeechDebug] = useState<NormalizedResult | null>(null);
   const [listeningState, setListeningState] = useState<ListeningWorkflowState>("idle");
   const [isPresentationMode, setIsPresentationMode] = useState(false);
-  const [showPresentationReference, setShowPresentationReference] = useState(true);
-  const [referencePlacement, setReferencePlacement] = useState<ReferencePlacement>("top-left");
-  const [useSafeMargins, setUseSafeMargins] = useState(true);
-  const [isProjectorWindowOpen, setIsProjectorWindowOpen] = useState(false);
+  const [showPresentationReference, setShowPresentationReference] = useState(initialSettings.showPresentationReference);
+  const [referencePlacement, setReferencePlacement] = useState<ReferencePlacement>(initialSettings.referencePlacement);
+  const [useSafeMargins, setUseSafeMargins] = useState(initialSettings.useSafeMargins);
+  const [selectedTranslation, setSelectedTranslation] = useState(initialSettings.selectedTranslation);
+  const [reopenProjectorOnLaunch, setReopenProjectorOnLaunch] = useState(initialSettings.reopenProjectorOnLaunch);
+  const [helpPanelExpanded, setHelpPanelExpanded] = useState(initialSettings.helpPanelExpanded);
+  const [isProjectorWindowOpen, setIsProjectorWindowOpen] = useState(initialSettings.wasProjectorWindowOpen);
+  const [isRestoringStartupState, setIsRestoringStartupState] = useState(true);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
+  const startupRestoreStartedRef = useRef(false);
   const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
 
   const verseText = useMemo(() => {
@@ -94,6 +101,30 @@ export default function App() {
       console.warn("[projector] failed to emit sync event", error);
     });
   }, [projectorPayload]);
+
+  useEffect(() => {
+    writeAppSettings(
+      settingsFromSnapshot({
+        showPresentationReference,
+        referencePlacement,
+        useSafeMargins,
+        selectedTranslation,
+        reopenProjectorOnLaunch,
+        wasProjectorWindowOpen: isProjectorWindowOpen,
+        helpPanelExpanded,
+        result
+      })
+    );
+  }, [
+    helpPanelExpanded,
+    isProjectorWindowOpen,
+    referencePlacement,
+    reopenProjectorOnLaunch,
+    result,
+    selectedTranslation,
+    showPresentationReference,
+    useSafeMargins
+  ]);
 
   const filteredSessionLog = useMemo(() => {
     if (sessionLogFilter === "all") {
@@ -495,6 +526,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isRestoringStartupState || startupRestoreStartedRef.current) {
+      return;
+    }
+    startupRestoreStartedRef.current = true;
+
+    const restoreOnStartup = async () => {
+      const restoredReference = initialSettings.lastReference;
+
+      if (restoredReference) {
+        setReference(restoredReference);
+        await handleSearch(restoredReference, "typed");
+      }
+
+      if (initialSettings.reopenProjectorOnLaunch && initialSettings.wasProjectorWindowOpen) {
+        await handleOpenProjectorView();
+      }
+
+      setStatus(restoredReference ? "Settings and last verse restored" : "Settings restored");
+      setIsRestoringStartupState(false);
+    };
+
+    void restoreOnStartup();
+  }, [handleOpenProjectorView, handleSearch, initialSettings, isRestoringStartupState]);
+
+  useEffect(() => {
     const onFullscreenChange = () => {
       setIsPresentationMode(Boolean(document.fullscreenElement));
     };
@@ -513,6 +569,7 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <div className="service-pill">{status}</div>
+            {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
             <button
               className="present-button"
               onClick={() => void handleOpenProjectorView()}
@@ -593,7 +650,11 @@ export default function App() {
                   <label className="field-label" htmlFor="translation-select">
                     Translation
                   </label>
-                  <select id="translation-select" value="KJV" disabled>
+                  <select
+                    id="translation-select"
+                    value={selectedTranslation}
+                    onChange={(e) => setSelectedTranslation(e.target.value)}
+                  >
                     <option value="KJV">KJV</option>
                   </select>
                 </div>
@@ -631,6 +692,15 @@ export default function App() {
                   Use projector safe margins
                 </label>
 
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={reopenProjectorOnLaunch}
+                    onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)}
+                  />
+                  Reopen projector window on startup
+                </label>
+
                 <div className="service-actions">
                   <button
                     className="present-button present-button--secondary"
@@ -647,6 +717,31 @@ export default function App() {
                     Re-present Current Verse
                   </button>
                 </div>
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Quick Start</h2>
+                <p>Compact first-use guidance. Collapse when not needed.</p>
+              </header>
+
+              <div className="panel-card__body">
+                <details
+                  className="quick-start"
+                  open={helpPanelExpanded}
+                  onToggle={(event) => setHelpPanelExpanded(event.currentTarget.open)}
+                >
+                  <summary>{helpPanelExpanded ? "Hide help panel" : "Show help panel"}</summary>
+                  <ul>
+                    <li><strong>Typing search:</strong> Enter a reference and press Enter or click Search.</li>
+                    <li><strong>Microphone mode:</strong> Click Start Listening, speak, then confirm or allow auto-search.</li>
+                    <li><strong>Projector view:</strong> Use Open Projector View to launch/focus the projector window.</li>
+                    <li><strong>Fullscreen:</strong> Use Present Fullscreen for confidence display and Exit when done.</li>
+                    <li><strong>Session exports:</strong> Use Export TXT or Export CSV in the Service Session Log panel.</li>
+                    <li><strong>Copy reference:</strong> Use Copy Current Reference to copy the active verse reference.</li>
+                  </ul>
+                </details>
               </div>
             </section>
 
