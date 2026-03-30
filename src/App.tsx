@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/window";
+import { save } from "@tauri-apps/api/dialog";
+import { writeTextFile } from "@tauri-apps/api/fs";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
@@ -14,6 +16,14 @@ import {
   type ProjectorPayload,
   type ReferencePlacement
 } from "./features/display/projectorSync";
+import {
+  addSessionLogEntry,
+  formatSessionTimestamp,
+  toSessionLogCsv,
+  toSessionLogText,
+  type SessionLogEntry,
+  type SessionSourceType
+} from "./features/history/sessionLog";
 
 type HistoryItem = {
   reference: string;
@@ -39,6 +49,7 @@ export default function App() {
   const [reference, setReference] = useState("John 3:16");
   const [result, setResult] = useState<SearchResult>(EMPTY_RESULT);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [sessionLog, setSessionLog] = useState<SessionLogEntry[]>([]);
   const [status, setStatus] = useState("Ready");
   const [isLoading, setIsLoading] = useState(false);
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
@@ -141,7 +152,7 @@ export default function App() {
     void syncProjectorNow("Current verse re-presented");
   }, [syncProjectorNow]);
 
-  const handleSearch = useCallback(async (overrideReference?: string) => {
+  const handleSearch = useCallback(async (overrideReference?: string, sourceType: SessionSourceType = "typed") => {
     const trimmed = (overrideReference ?? reference).trim();
     if (!trimmed) return;
 
@@ -155,6 +166,12 @@ export default function App() {
 
       if (response.found && response.verses.length > 0) {
         pushHistoryWithCooldown(response.reference);
+        setSessionLog((prev) =>
+          addSessionLogEntry(prev, {
+            reference: response.reference,
+            sourceType
+          })
+        );
         setListeningState("verse_loaded");
         setStatus("Verse loaded");
       } else {
@@ -230,7 +247,37 @@ export default function App() {
 
     lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
     setSpeechNotice(`Heard: "${spokenTranscript}" → ${nextReference}`);
-    await handleSearch(nextReference);
+    await handleSearch(nextReference, "spoken");
+  }, [handleSearch]);
+
+  const exportSessionLog = useCallback(async (format: "txt" | "csv") => {
+    try {
+      const suggestedName = `scripture-cue-session-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.${format}`;
+      const targetPath = await save({
+        defaultPath: suggestedName,
+        filters:
+          format === "txt"
+            ? [{ name: "Text", extensions: ["txt"] }]
+            : [{ name: "CSV", extensions: ["csv"] }]
+      });
+
+      if (!targetPath) {
+        setStatus("Session export canceled");
+        return;
+      }
+
+      const content = format === "txt" ? toSessionLogText(sessionLog) : toSessionLogCsv(sessionLog);
+      await writeTextFile(targetPath, content);
+      setStatus(`Session log exported (${format.toUpperCase()})`);
+    } catch (error) {
+      console.error("[session] export failed", error);
+      setStatus("Session export failed");
+    }
+  }, [sessionLog]);
+
+  const handleRecallSessionEntry = useCallback(async (entry: SessionLogEntry) => {
+    setReference(entry.reference);
+    await handleSearch(entry.reference, entry.sourceType);
   }, [handleSearch]);
 
   useEffect(() => {
@@ -620,6 +667,51 @@ export default function App() {
                       </li>
                     ))}
                   </ul>
+                )}
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Service Session Log</h2>
+                <p>Chronological verses presented this service with one-click quick recall.</p>
+              </header>
+
+              <div className="panel-card__body session-log-body">
+                <div className="session-log-actions">
+                  <button
+                    className="present-button present-button--secondary"
+                    type="button"
+                    onClick={() => void exportSessionLog("txt")}
+                  >
+                    Export TXT
+                  </button>
+                  <button
+                    className="present-button present-button--secondary"
+                    type="button"
+                    onClick={() => void exportSessionLog("csv")}
+                  >
+                    Export CSV
+                  </button>
+                </div>
+
+                {sessionLog.length === 0 ? (
+                  <p className="history-empty">No verses presented in this session yet.</p>
+                ) : (
+                  <ol className="session-log-list" aria-label="Service session log">
+                    {sessionLog.map((entry) => (
+                      <li key={entry.id}>
+                        <button
+                          className="history-list__item"
+                          onClick={() => void handleRecallSessionEntry(entry)}
+                        >
+                          <span className="history-list__reference">{entry.reference}</span>
+                          <span className="history-list__meta">Source: {entry.sourceType}</span>
+                          <span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
                 )}
               </div>
             </section>
