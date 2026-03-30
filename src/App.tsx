@@ -39,8 +39,6 @@ export default function App() {
       setStatus("Searching...");
 
       const response = await searchKjv(trimmed);
-      console.log("frontend search response", response);
-
       setResult(response);
 
       if (response.found && response.verses.length > 0) {
@@ -59,14 +57,12 @@ export default function App() {
         setStatus(response.message ?? "No result found");
       }
     } catch (error) {
-      console.error("search failed", error);
-
       const message =
         error instanceof Error
           ? error.message
           : typeof error === "string"
-          ? error
-          : JSON.stringify(error, null, 2);
+            ? error
+            : JSON.stringify(error, null, 2);
 
       setResult({
         ...EMPTY_RESULT,
@@ -81,94 +77,122 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <div className="topbar">
+      <header className="app-shell__topbar">
         <div>
-          <div className="eyebrow">SCRIPTURE CUE</div>
+          <p className="eyebrow">SCRIPTURE CUE</p>
           <h1>Presentation Operator Console</h1>
         </div>
-        <div className="pill">{status}</div>
-      </div>
+        <div className="service-pill">{status}</div>
+      </header>
 
-      <div className="grid">
-        <div className="left-col">
-          <section className="card">
-            <h2>Scripture Search</h2>
-            <p className="muted">Find passage, topic or reference</p>
+      <div className="workspace-grid">
+        <div className="workspace-column">
+          <section className="panel-card">
+            <header className="panel-card__header">
+              <h2>Scripture Search</h2>
+              <p>Operator-ready lookup with the bundled KJV database.</p>
+            </header>
 
-            <label className="label">Search</label>
-            <input
-              className="input"
-              value={reference}
-              onChange={(e) => setReference(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleSearch();
-              }}
-              placeholder="Genesis 1:1"
-            />
-
-            <label className="label">Translation</label>
-            <select className="input" value="KJV" disabled>
-              <option value="KJV">KJV</option>
-            </select>
-
-            <button className="button" onClick={() => void handleSearch()} disabled={isLoading}>
-              {isLoading ? "Searching..." : "Search"}
-            </button>
-          </section>
-
-          <section className="card">
-            <h2>Recent History</h2>
-            <p className="muted">Newest successful matches first</p>
-
-            {history.length === 0 ? (
-              <div className="empty">No successful searches yet.</div>
-            ) : (
-              <div className="history-list">
-                {history.map((item, idx) => (
-                  <button
-                    key={`${item.reference}-${idx}`}
-                    className="history-item"
-                    onClick={() => setReference(item.reference)}
-                  >
-                    <div className="history-ref">{item.reference}</div>
-                    <div className="history-time">{item.timestamp}</div>
-                  </button>
-                ))}
+            <div className="panel-card__body search-controls">
+              <label className="field-label" htmlFor="reference-input">
+                Reference
+              </label>
+              <div className="search-row">
+                <input
+                  id="reference-input"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleSearch();
+                  }}
+                  placeholder="Genesis 1:1"
+                />
+                <button
+                  className="run-search-button"
+                  onClick={() => void handleSearch()}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Searching..." : "Search"}
+                </button>
               </div>
-            )}
-          </section>
-        </div>
 
-        <div className="right-col">
-          <section className="card">
-            <h2>Verse Preview</h2>
-            <p className="muted">Prepared for confidence monitor and projector output</p>
-            <div className="preview-box">
-              <pre>{verseText}</pre>
+              <div className="translation-row">
+                <label className="field-label" htmlFor="translation-select">
+                  Translation
+                </label>
+                <select id="translation-select" value="KJV" disabled>
+                  <option value="KJV">KJV</option>
+                </select>
+              </div>
             </div>
           </section>
 
-          <section className="card metadata-card">
-            <h2>Metadata</h2>
-            <p className="muted">Review details before presenting</p>
+          <section className="panel-card">
+            <header className="panel-card__header">
+              <h2>Recent History</h2>
+              <p>Newest successful scripture loads appear first.</p>
+            </header>
 
-            <div className="meta-grid">
-              <div>
-                <div className="meta-label">REFERENCE</div>
-                <div className="meta-value">{result.reference}</div>
-              </div>
-              <div>
-                <div className="meta-label">TRANSLATION</div>
-                <div className="meta-value">{result.translation}</div>
-              </div>
-              <div>
-                <div className="meta-label">THEME</div>
-                <div className="meta-value">{result.theme}</div>
-              </div>
-              <div>
-                <div className="meta-label">STATUS</div>
-                <div className="meta-value">{result.found ? "Loaded" : "No Result"}</div>
-              </div>
+            <div className="panel-card__body">
+              {history.length === 0 ? (
+                <p className="history-empty">No successful searches yet.</p>
+              ) : (
+                <ul className="history-list">
+                  {history.map((item, idx) => (
+                    <li key={`${item.reference}-${idx}`}>
+                      <button
+                        className="history-list__item"
+                        onClick={() => setReference(item.reference)}
+                      >
+                        <span className="history-list__reference">{item.reference}</span>
+                        <span className="history-list__meta">Ready to search</span>
+                        <span className="history-list__time">{item.timestamp}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <div className="workspace-column">
+          <section className="panel-card preview-card">
+            <header className="panel-card__header">
+              <h2>Verse Preview</h2>
+              <p>Large-format text for confidence monitor and projection checks.</p>
+            </header>
+
+            <div className="panel-card__body">
+              <pre className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}>{verseText}</pre>
+            </div>
+          </section>
+
+          <section className="panel-card">
+            <header className="panel-card__header">
+              <h2>Metadata</h2>
+              <p>Quick validation details for the currently loaded passage.</p>
+            </header>
+
+            <div className="panel-card__body">
+              <dl className="metadata-grid">
+                <div>
+                  <dt>Reference</dt>
+                  <dd>{result.reference}</dd>
+                </div>
+                <div>
+                  <dt>Translation</dt>
+                  <dd>{result.translation}</dd>
+                </div>
+                <div>
+                  <dt>Theme</dt>
+                  <dd>{result.theme}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{result.found ? "Loaded" : "No Result"}</dd>
+                </div>
+              </dl>
             </div>
           </section>
         </div>
