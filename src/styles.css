@@ -306,8 +306,28 @@ select {
 
 .session-log-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.55rem;
+}
+
+.session-log-actions--filters {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.present-button--active {
+  border-color: #85a2ff;
+  box-shadow: 0 0 0 1px rgba(133, 162, 255, 0.4) inset;
+}
+
+.session-notice {
+  margin: 0;
+  color: #b9c9ff;
+  font-size: 0.84rem;
+  border: 1px solid #33426f;
+  background: #121a39;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  overflow-wrap: anywhere;
 }
 
 .session-log-list {

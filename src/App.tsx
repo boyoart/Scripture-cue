@@ -3,6 +3,7 @@ import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/window";
 import { save } from "@tauri-apps/api/dialog";
 import { writeTextFile } from "@tauri-apps/api/fs";
+import { writeText } from "@tauri-apps/api/clipboard";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
@@ -32,6 +33,7 @@ type HistoryItem = {
 };
 
 type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "error";
+type SessionLogFilter = "all" | "typed" | "spoken";
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
@@ -50,6 +52,8 @@ export default function App() {
   const [result, setResult] = useState<SearchResult>(EMPTY_RESULT);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [sessionLog, setSessionLog] = useState<SessionLogEntry[]>([]);
+  const [sessionLogFilter, setSessionLogFilter] = useState<SessionLogFilter>("all");
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [status, setStatus] = useState("Ready");
   const [isLoading, setIsLoading] = useState(false);
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
@@ -90,6 +94,14 @@ export default function App() {
       console.warn("[projector] failed to emit sync event", error);
     });
   }, [projectorPayload]);
+
+  const filteredSessionLog = useMemo(() => {
+    if (sessionLogFilter === "all") {
+      return sessionLog;
+    }
+
+    return sessionLog.filter((entry) => entry.sourceType === sessionLogFilter);
+  }, [sessionLog, sessionLogFilter]);
 
   const pushHistoryWithCooldown = useCallback((nextReference: string) => {
     const now = Date.now();
@@ -252,6 +264,7 @@ export default function App() {
 
   const exportSessionLog = useCallback(async (format: "txt" | "csv") => {
     try {
+      setSessionNotice(null);
       const suggestedName = `scripture-cue-session-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.${format}`;
       const targetPath = await save({
         defaultPath: suggestedName,
@@ -263,17 +276,65 @@ export default function App() {
 
       if (!targetPath) {
         setStatus("Session export canceled");
+        setSessionNotice("Export canceled.");
         return;
       }
 
       const content = format === "txt" ? toSessionLogText(sessionLog) : toSessionLogCsv(sessionLog);
       await writeTextFile(targetPath, content);
       setStatus(`Session log exported (${format.toUpperCase()})`);
+      setSessionNotice(`Exported ${format.toUpperCase()} to ${targetPath}`);
     } catch (error) {
       console.error("[session] export failed", error);
+      const details =
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : JSON.stringify(error);
       setStatus("Session export failed");
+      setSessionNotice(`Export failed: ${details}`);
     }
   }, [sessionLog]);
+
+  const handleClearSessionLog = useCallback(() => {
+    if (sessionLog.length === 0) {
+      setSessionNotice("Session log is already empty.");
+      return;
+    }
+
+    const confirmed = window.confirm("Clear the session log for this service? Current verse will stay loaded.");
+    if (!confirmed) {
+      return;
+    }
+
+    setSessionLog([]);
+    setSessionNotice("Session log cleared.");
+    setStatus("Session log cleared");
+  }, [sessionLog.length]);
+
+  const handleCopyCurrentReference = useCallback(async () => {
+    if (!result.reference || result.reference === EMPTY_RESULT.reference) {
+      setSessionNotice("No loaded reference to copy.");
+      return;
+    }
+
+    try {
+      await writeText(result.reference);
+      setSessionNotice(`Copied reference: ${result.reference}`);
+      setStatus("Current reference copied");
+    } catch (error) {
+      console.error("[session] copy reference failed", error);
+      const details =
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : JSON.stringify(error);
+      setSessionNotice(`Copy failed: ${details}`);
+      setStatus("Copy reference failed");
+    }
+  }, [result.reference]);
 
   const handleRecallSessionEntry = useCallback(async (entry: SessionLogEntry) => {
     setReference(entry.reference);
@@ -678,7 +739,7 @@ export default function App() {
               </header>
 
               <div className="panel-card__body session-log-body">
-                <div className="session-log-actions">
+                <div className="session-log-actions session-log-actions--filters">
                   <button
                     className="present-button present-button--secondary"
                     type="button"
@@ -694,12 +755,54 @@ export default function App() {
                     Export CSV
                   </button>
                 </div>
+                <div className="session-log-actions">
+                  <button
+                    className={`present-button present-button--secondary ${sessionLogFilter === "all" ? "present-button--active" : ""}`}
+                    type="button"
+                    onClick={() => setSessionLogFilter("all")}
+                  >
+                    All
+                  </button>
+                  <button
+                    className={`present-button present-button--secondary ${sessionLogFilter === "typed" ? "present-button--active" : ""}`}
+                    type="button"
+                    onClick={() => setSessionLogFilter("typed")}
+                  >
+                    Typed
+                  </button>
+                  <button
+                    className={`present-button present-button--secondary ${sessionLogFilter === "spoken" ? "present-button--active" : ""}`}
+                    type="button"
+                    onClick={() => setSessionLogFilter("spoken")}
+                  >
+                    Spoken
+                  </button>
+                </div>
+                <div className="session-log-actions">
+                  <button
+                    className="present-button present-button--secondary"
+                    type="button"
+                    onClick={() => void handleCopyCurrentReference()}
+                  >
+                    Copy Current Reference
+                  </button>
+                  <button
+                    className="present-button present-button--secondary"
+                    type="button"
+                    onClick={handleClearSessionLog}
+                  >
+                    Clear Session Log
+                  </button>
+                </div>
+                {sessionNotice ? <p className="session-notice">{sessionNotice}</p> : null}
 
                 {sessionLog.length === 0 ? (
                   <p className="history-empty">No verses presented in this session yet.</p>
+                ) : filteredSessionLog.length === 0 ? (
+                  <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p>
                 ) : (
                   <ol className="session-log-list" aria-label="Service session log">
-                    {sessionLog.map((entry) => (
+                    {filteredSessionLog.map((entry) => (
                       <li key={entry.id}>
                         <button
                           className="history-list__item"
