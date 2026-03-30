@@ -461,6 +461,21 @@ select {
   color: #b8c4f6;
 }
 
+.quick-start summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #c7d2fc;
+}
+
+.quick-start ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.15rem;
+  display: grid;
+  gap: 0.45rem;
+  color: #b5c2f2;
+  font-size: 0.88rem;
+}
+
 .presentation-mode {
   position: fixed;
   inset: 0;
