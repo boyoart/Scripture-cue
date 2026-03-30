@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { WebviewWindow } from "@tauri-apps/api/window";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
+import ProjectorView from "./components/ProjectorView";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
 import { CANONICAL_BOOK_DICTIONARY } from "./features/parser/spokenBookMatcher";
 import { useSpeechMeter } from "./features/speech/useSpeechMeter";
+import {
+  PROJECTOR_WINDOW_LABEL,
+  writeProjectorState,
+  type ProjectorPayload
+} from "./features/display/projectorSync";
 
 type HistoryItem = {
   reference: string;
@@ -24,6 +31,9 @@ const EMPTY_RESULT: SearchResult = {
   message: "No result loaded yet."
 };
 
+const isProjectorWindow =
+  typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "projector";
+
 export default function App() {
   const [reference, setReference] = useState("John 3:16");
   const [result, setResult] = useState<SearchResult>(EMPTY_RESULT);
@@ -35,6 +45,8 @@ export default function App() {
   const [listeningState, setListeningState] = useState<ListeningWorkflowState>("idle");
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [showPresentationReference, setShowPresentationReference] = useState(true);
+  const [isProjectorWindowOpen, setIsProjectorWindowOpen] = useState(false);
+  const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
   const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
@@ -46,6 +58,19 @@ export default function App() {
 
     return result.verses.map((v) => `${v.verse}. ${v.text}`).join("\n");
   }, [result]);
+
+  const projectorPayload: ProjectorPayload = useMemo(
+    () => ({
+      result,
+      verseText,
+      showReference: showPresentationReference
+    }),
+    [result, showPresentationReference, verseText]
+  );
+
+  useEffect(() => {
+    writeProjectorState(projectorPayload);
+  }, [projectorPayload]);
 
   const pushHistoryWithCooldown = useCallback((nextReference: string) => {
     const now = Date.now();
@@ -164,6 +189,31 @@ export default function App() {
   }, [handleSearch]);
 
   useEffect(() => {
+    if (isProjectorWindow) {
+      return;
+    }
+
+    const existingWindow = WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
+    if (!existingWindow) {
+      setIsProjectorWindowOpen(false);
+      projectorWindowRef.current = null;
+      return;
+    }
+
+    projectorWindowRef.current = existingWindow;
+    setIsProjectorWindowOpen(true);
+
+    const unlistenPromise = existingWindow.once("tauri://close-requested", () => {
+      projectorWindowRef.current = null;
+      setIsProjectorWindowOpen(false);
+    });
+
+    return () => {
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  useEffect(() => {
     if (micState === "listening") {
       setListeningState("listening");
       return;
@@ -221,6 +271,60 @@ export default function App() {
     setIsPresentationMode(false);
   }, []);
 
+  const handleOpenProjectorView = useCallback(async () => {
+    const existing = WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
+
+    if (existing) {
+      projectorWindowRef.current = existing;
+      setIsProjectorWindowOpen(true);
+      await existing.show();
+      await existing.setFocus();
+      return;
+    }
+
+    const projectorWindow = new WebviewWindow(PROJECTOR_WINDOW_LABEL, {
+      url: `${window.location.pathname}?view=projector`,
+      title: "Scripture Cue Projector",
+      width: 1600,
+      height: 900,
+      resizable: true,
+      fullscreen: false,
+      decorations: true,
+      center: true
+    });
+
+    projectorWindowRef.current = projectorWindow;
+    writeProjectorState(projectorPayload);
+
+    projectorWindow.once("tauri://created", () => {
+      setIsProjectorWindowOpen(true);
+    });
+
+    projectorWindow.once("tauri://error", () => {
+      projectorWindowRef.current = null;
+      setIsProjectorWindowOpen(false);
+      setStatus("Projector window failed to open");
+    });
+
+    projectorWindow.once("tauri://close-requested", () => {
+      projectorWindowRef.current = null;
+      setIsProjectorWindowOpen(false);
+    });
+  }, [projectorPayload]);
+
+  const handleCloseProjectorView = useCallback(async () => {
+    const target = projectorWindowRef.current ?? WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
+
+    if (!target) {
+      setIsProjectorWindowOpen(false);
+      return;
+    }
+
+    await target.close();
+    projectorWindowRef.current = null;
+    setIsProjectorWindowOpen(false);
+  }, []);
+
   useEffect(() => {
     const onFullscreenChange = () => {
       setIsPresentationMode(Boolean(document.fullscreenElement));
@@ -229,6 +333,10 @@ export default function App() {
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
+
+  if (isProjectorWindow) {
+    return <ProjectorView />;
+  }
 
   return (
     <>
@@ -242,6 +350,18 @@ export default function App() {
             <div className="service-pill">{status}</div>
             <button
               className="present-button"
+              onClick={() => void handleOpenProjectorView()}
+              disabled={isLoading}
+            >
+              {isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}
+            </button>
+            {isProjectorWindowOpen ? (
+              <button className="present-button present-button--secondary" onClick={() => void handleCloseProjectorView()}>
+                Close Projector View
+              </button>
+            ) : null}
+            <button
+              className="present-button"
               onClick={() => void togglePresentationMode()}
               disabled={isLoading}
             >
@@ -251,204 +371,204 @@ export default function App() {
         </header>
 
         <div className="workspace-grid">
-        <div className="workspace-column">
-          <section className="panel-card">
-            <header className="panel-card__header">
-              <h2>Scripture Search</h2>
-              <p>Operator-ready lookup with the bundled KJV database.</p>
-            </header>
+          <div className="workspace-column">
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Scripture Search</h2>
+                <p>Operator-ready lookup with the bundled KJV database.</p>
+              </header>
 
-            <div className="panel-card__body search-controls">
-              <label className="field-label" htmlFor="reference-input">
-                Reference
-              </label>
-              <div className="search-row">
-                <input
-                  id="reference-input"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleSearch();
-                  }}
-                  placeholder="Genesis 1:1"
-                />
-                <button
-                  className="run-search-button"
-                  onClick={() => void handleSearch()}
-                  disabled={isLoading}
-                >
-                  {isLoading ? "Searching..." : "Search"}
-                </button>
-              </div>
-
-              <div className="mic-controls-row">
-                <button
-                  className={`mic-toggle-button ${listening ? "mic-toggle-button--live" : ""}`}
-                  onClick={() => {
-                    if (listening) {
-                      handleStopListening();
-                    } else {
-                      void handleStartListening();
-                    }
-                  }}
-                  disabled={isLoading}
-                >
-                  {listening ? "Stop Listening" : "Start Listening"}
-                </button>
-                <span className={`mic-state-chip mic-state-chip--${listeningState}`}>
-                  {listeningStateLabel}
-                </span>
-              </div>
-
-              <MicrophoneMeter bars={bars} micState={micState} />
-              {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
-              {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
-
-              <div className="translation-row">
-                <label className="field-label" htmlFor="translation-select">
-                  Translation
+              <div className="panel-card__body search-controls">
+                <label className="field-label" htmlFor="reference-input">
+                  Reference
                 </label>
-                <select id="translation-select" value="KJV" disabled>
-                  <option value="KJV">KJV</option>
-                </select>
+                <div className="search-row">
+                  <input
+                    id="reference-input"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleSearch();
+                    }}
+                    placeholder="Genesis 1:1"
+                  />
+                  <button
+                    className="run-search-button"
+                    onClick={() => void handleSearch()}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? "Searching..." : "Search"}
+                  </button>
+                </div>
+
+                <div className="mic-controls-row">
+                  <button
+                    className={`mic-toggle-button ${listening ? "mic-toggle-button--live" : ""}`}
+                    onClick={() => {
+                      if (listening) {
+                        handleStopListening();
+                      } else {
+                        void handleStartListening();
+                      }
+                    }}
+                    disabled={isLoading}
+                  >
+                    {listening ? "Stop Listening" : "Start Listening"}
+                  </button>
+                  <span className={`mic-state-chip mic-state-chip--${listeningState}`}>
+                    {listeningStateLabel}
+                  </span>
+                </div>
+
+                <MicrophoneMeter bars={bars} micState={micState} />
+                {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
+                {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
+
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="translation-select">
+                    Translation
+                  </label>
+                  <select id="translation-select" value="KJV" disabled>
+                    <option value="KJV">KJV</option>
+                  </select>
+                </div>
+
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={showPresentationReference}
+                    onChange={(e) => setShowPresentationReference(e.target.checked)}
+                  />
+                  Show reference in presenter view
+                </label>
               </div>
+            </section>
 
-              <label className="inline-check">
-                <input
-                  type="checkbox"
-                  checked={showPresentationReference}
-                  onChange={(e) => setShowPresentationReference(e.target.checked)}
-                />
-                Show reference in presenter view
-              </label>
-            </div>
-          </section>
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Speech Debug</h2>
+                <p>Shows transcript parsing, confidence, and ambiguity before auto-search.</p>
+              </header>
 
-          <section className="panel-card">
-            <header className="panel-card__header">
-              <h2>Speech Debug</h2>
-              <p>Shows transcript parsing, confidence, and ambiguity before auto-search.</p>
-            </header>
-
-            <div className="panel-card__body">
-              {speechDebug ? (
-                <dl className="debug-grid">
-                  <div>
-                    <dt>Heard transcript</dt>
-                    <dd>{speechDebug.rawTranscript}</dd>
-                  </div>
-                  <div>
-                    <dt>Matched book</dt>
-                    <dd>{speechDebug.canonicalBook ?? "Uncertain"}</dd>
-                  </div>
-                  <div>
-                    <dt>Normalized reference</dt>
-                    <dd>{speechDebug.normalizedReference}</dd>
-                  </div>
-                  <div>
-                    <dt>Confidence</dt>
-                    <dd>{(speechDebug.confidence * 100).toFixed(1)}%</dd>
-                  </div>
-                  <div>
-                    <dt>Ambiguity</dt>
-                    <dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Ambiguous - manual review"}</dd>
-                  </div>
-                  <div>
-                    <dt>Book source</dt>
-                    <dd>{speechDebug.debug.bookMatchSource}</dd>
-                  </div>
-                  {speechDebug.debug.reason ? (
+              <div className="panel-card__body">
+                {speechDebug ? (
+                  <dl className="debug-grid">
                     <div>
-                      <dt>Match note</dt>
-                      <dd>{speechDebug.debug.reason}</dd>
+                      <dt>Heard transcript</dt>
+                      <dd>{speechDebug.rawTranscript}</dd>
                     </div>
-                  ) : null}
+                    <div>
+                      <dt>Matched book</dt>
+                      <dd>{speechDebug.canonicalBook ?? "Uncertain"}</dd>
+                    </div>
+                    <div>
+                      <dt>Normalized reference</dt>
+                      <dd>{speechDebug.normalizedReference}</dd>
+                    </div>
+                    <div>
+                      <dt>Confidence</dt>
+                      <dd>{(speechDebug.confidence * 100).toFixed(1)}%</dd>
+                    </div>
+                    <div>
+                      <dt>Ambiguity</dt>
+                      <dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Ambiguous - manual review"}</dd>
+                    </div>
+                    <div>
+                      <dt>Book source</dt>
+                      <dd>{speechDebug.debug.bookMatchSource}</dd>
+                    </div>
+                    {speechDebug.debug.reason ? (
+                      <div>
+                        <dt>Match note</dt>
+                        <dd>{speechDebug.debug.reason}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                ) : (
+                  <p className="history-empty">No speech transcript captured yet.</p>
+                )}
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Recent History</h2>
+                <p>Newest successful scripture loads appear first.</p>
+              </header>
+
+              <div className="panel-card__body">
+                {history.length === 0 ? (
+                  <p className="history-empty">No successful searches yet.</p>
+                ) : (
+                  <ul className="history-list">
+                    {history.map((item, idx) => (
+                      <li key={`${item.reference}-${idx}`}>
+                        <button
+                          className="history-list__item"
+                          onClick={() => setReference(item.reference)}
+                        >
+                          <span className="history-list__reference">{item.reference}</span>
+                          <span className="history-list__meta">Ready to search</span>
+                          <span className="history-list__time">{item.timestamp}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </section>
+          </div>
+
+          <div className="workspace-column">
+            <section className="panel-card preview-card">
+              <header className="panel-card__header">
+                <h2>Verse Preview</h2>
+                <p>Large-format text for confidence monitor and projection checks.</p>
+              </header>
+
+              <div className="panel-card__body">
+                <pre className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}>{verseText}</pre>
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Metadata</h2>
+                <p>Quick validation details for the currently loaded passage.</p>
+              </header>
+
+              <div className="panel-card__body">
+                <dl className="metadata-grid">
+                  <div>
+                    <dt>Reference</dt>
+                    <dd>{result.reference}</dd>
+                  </div>
+                  <div>
+                    <dt>Translation</dt>
+                    <dd>{result.translation}</dd>
+                  </div>
+                  <div>
+                    <dt>Theme</dt>
+                    <dd>{result.theme}</dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{result.found ? "Loaded" : "No Result"}</dd>
+                  </div>
                 </dl>
-              ) : (
-                <p className="history-empty">No speech transcript captured yet.</p>
-              )}
-            </div>
-          </section>
+              </div>
+            </section>
 
-          <section className="panel-card">
-            <header className="panel-card__header">
-              <h2>Recent History</h2>
-              <p>Newest successful scripture loads appear first.</p>
-            </header>
-
-            <div className="panel-card__body">
-              {history.length === 0 ? (
-                <p className="history-empty">No successful searches yet.</p>
-              ) : (
-                <ul className="history-list">
-                  {history.map((item, idx) => (
-                    <li key={`${item.reference}-${idx}`}>
-                      <button
-                        className="history-list__item"
-                        onClick={() => setReference(item.reference)}
-                      >
-                        <span className="history-list__reference">{item.reference}</span>
-                        <span className="history-list__meta">Ready to search</span>
-                        <span className="history-list__time">{item.timestamp}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-        </div>
-
-        <div className="workspace-column">
-          <section className="panel-card preview-card">
-            <header className="panel-card__header">
-              <h2>Verse Preview</h2>
-              <p>Large-format text for confidence monitor and projection checks.</p>
-            </header>
-
-            <div className="panel-card__body">
-              <pre className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}>{verseText}</pre>
-            </div>
-          </section>
-
-          <section className="panel-card">
-            <header className="panel-card__header">
-              <h2>Metadata</h2>
-              <p>Quick validation details for the currently loaded passage.</p>
-            </header>
-
-            <div className="panel-card__body">
-              <dl className="metadata-grid">
-                <div>
-                  <dt>Reference</dt>
-                  <dd>{result.reference}</dd>
-                </div>
-                <div>
-                  <dt>Translation</dt>
-                  <dd>{result.translation}</dd>
-                </div>
-                <div>
-                  <dt>Theme</dt>
-                  <dd>{result.theme}</dd>
-                </div>
-                <div>
-                  <dt>Status</dt>
-                  <dd>{result.found ? "Loaded" : "No Result"}</dd>
-                </div>
-              </dl>
-            </div>
-          </section>
-
-          <section className="panel-card">
-            <header className="panel-card__header">
-              <h2>Canonical Book Coverage</h2>
-              <p>Configured spoken-book dictionary for all supported KJV books.</p>
-            </header>
-            <div className="panel-card__body">
-              <p className="coverage-count">{CANONICAL_BOOK_DICTIONARY.length} books configured.</p>
-            </div>
-          </section>
-        </div>
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Canonical Book Coverage</h2>
+                <p>Configured spoken-book dictionary for all supported KJV books.</p>
+              </header>
+              <div className="panel-card__body">
+                <p className="coverage-count">{CANONICAL_BOOK_DICTIONARY.length} books configured.</p>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
 
