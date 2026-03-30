@@ -42,23 +42,28 @@ export function toSessionLogText(entries: SessionLogEntry[]): string {
   }
 
   const lines = entries.map((entry, index) => {
-    return `${index + 1}. ${entry.reference} | ${entry.sourceType.toUpperCase()} | ${formatSessionTimestamp(entry.timestampMs)}`;
+    return [
+      `Entry ${index + 1}`,
+      `  Timestamp: ${new Date(entry.timestampMs).toISOString()}`,
+      `  Reference: ${entry.reference}`,
+      `  Source Type: ${entry.sourceType}`
+    ].join("\n");
   });
 
-  return ["Scripture Cue Session Log", "", ...lines].join("\n");
+  return ["Scripture Cue Session Log", `Total Entries: ${entries.length}`, "", ...lines].join("\n\n");
 }
 
 export function toSessionLogCsv(entries: SessionLogEntry[]): string {
-  const header = "index,reference,source_type,timestamp";
+  const header = "timestamp,reference,source_type";
 
   if (entries.length === 0) {
     return `${header}\n`;
   }
 
-  const rows = entries.map((entry, index) => {
-    const escapedReference = `\"${entry.reference.replace(/\"/g, "\"\"")}\"`;
+  const rows = entries.map((entry) => {
     const escapedTimestamp = `\"${new Date(entry.timestampMs).toISOString()}\"`;
-    return `${index + 1},${escapedReference},${entry.sourceType},${escapedTimestamp}`;
+    const escapedReference = `\"${entry.reference.replace(/\"/g, "\"\"")}\"`;
+    return `${escapedTimestamp},${escapedReference},${entry.sourceType}`;
   });
 
   return [header, ...rows].join("\n");
