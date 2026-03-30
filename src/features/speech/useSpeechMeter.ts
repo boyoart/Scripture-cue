@@ -39,7 +39,7 @@ export type SpeechMeterState = {
   errorMessage: string | null;
   listening: boolean;
   startListening: () => Promise<void>;
-  stopListening: () => void;
+  stopListening: (nextState?: MicState) => void;
 };
 
 const BAR_COUNT = 14;
@@ -89,12 +89,12 @@ export function useSpeechMeter(): SpeechMeterState {
     }
   }, []);
 
-  const stopListening = useCallback(() => {
+  const stopListening = useCallback((nextState: MicState = "processing") => {
     recognitionRef.current?.stop();
     clearAudioPipeline();
     setListening(false);
     setBars(Array.from({ length: BAR_COUNT }, () => 0.12));
-    setMicState((current: MicState) => (current === "error" ? current : "processing"));
+    setMicState((current: MicState) => (current === "error" ? "error" : nextState));
   }, [clearAudioPipeline]);
 
   const startListening = useCallback(async () => {
@@ -174,7 +174,14 @@ export function useSpeechMeter(): SpeechMeterState {
       frameRef.current = requestAnimationFrame(animateFallback);
     }
 
-    if (RecognitionCtor) {
+    if (!RecognitionCtor) {
+      setMicState("error");
+      setErrorMessage("Speech recognition is not available in this environment.");
+      stopListening("error");
+      return;
+    }
+
+    {
       const recognition = new RecognitionCtor();
       recognitionRef.current = recognition;
       recognition.continuous = false;
@@ -197,14 +204,14 @@ export function useSpeechMeter(): SpeechMeterState {
         if (latestResult?.isFinal && text) {
           hasTranscriptRef.current = true;
           setMicState("success");
-          stopListening();
+          stopListening("success");
         }
       };
 
       recognition.onerror = (event: { error: string }) => {
         setMicState("error");
         setErrorMessage(`Speech recognition error: ${event.error}`);
-        stopListening();
+        stopListening("error");
       };
 
       recognition.onend = () => {

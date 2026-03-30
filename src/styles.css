@@ -132,6 +132,94 @@ select {
   gap: 0.85rem;
 }
 
+.mic-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.mic-toggle-button {
+  border: 1px solid #3a5eb3;
+  border-radius: 10px;
+  background: linear-gradient(145deg, #1d366d, #162a54);
+  color: #f5f7ff;
+  padding: 0.62rem 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.mic-toggle-button--live {
+  border-color: #8d5dcf;
+  background: linear-gradient(145deg, #5d2c87, #3b225b);
+}
+
+.mic-state-chip {
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #3b4a80;
+  font-size: 0.75rem;
+  color: #b8c4f6;
+}
+
+.mic-state-chip--listening {
+  color: #d8c5ff;
+  border-color: #7f53bd;
+}
+
+.mic-state-chip--success {
+  color: #9ae5bf;
+  border-color: #2f9367;
+}
+
+.mic-state-chip--error {
+  color: #ffbac4;
+  border-color: #a25062;
+}
+
+.mic-status-line {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #9fb0e1;
+}
+
+.mic-status-line--error {
+  color: #ff9aaa;
+}
+
+.microphone-meter {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.microphone-meter__bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.16rem;
+  height: 20px;
+}
+
+.microphone-meter__bar {
+  width: 4px;
+  height: 100%;
+  transform-origin: bottom center;
+  border-radius: 999px;
+  background: #607ccc;
+}
+
+.microphone-meter--listening .microphone-meter__bar {
+  background: #ad7dff;
+}
+
+.microphone-meter--error .microphone-meter__bar {
+  background: #c86a7c;
+}
+
+.microphone-meter__label {
+  font-size: 0.78rem;
+  color: #a7b4e3;
+}
+
 .translation-row {
   display: grid;
   gap: 0.45rem;
