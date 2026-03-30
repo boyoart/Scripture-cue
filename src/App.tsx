@@ -1,5 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { searchKjv, type SearchResult } from "./api";
+import MicrophoneMeter from "./components/MicrophoneMeter";
+import { normalizeTranscriptToReference } from "./features/parser";
+import { useSpeechMeter } from "./features/speech/useSpeechMeter";
 
 type HistoryItem = {
   reference: string;
@@ -21,6 +24,8 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [status, setStatus] = useState("Ready");
   const [isLoading, setIsLoading] = useState(false);
+  const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+  const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
 
   const verseText = useMemo(() => {
     if (!result.found || result.verses.length === 0) {
@@ -30,8 +35,8 @@ export default function App() {
     return result.verses.map((v) => `${v.verse}. ${v.text}`).join("\n");
   }, [result]);
 
-  async function handleSearch() {
-    const trimmed = reference.trim();
+  const handleSearch = useCallback(async (overrideReference?: string) => {
+    const trimmed = (overrideReference ?? reference).trim();
     if (!trimmed) return;
 
     try {
@@ -73,7 +78,44 @@ export default function App() {
     } finally {
       setIsLoading(false);
     }
+  }, [reference]);
+
+  async function handleStartListening() {
+    setSpeechNotice(null);
+    await startListening();
   }
+
+  function handleStopListening() {
+    stopListening("idle");
+    setStatus("Listening stopped");
+  }
+
+  const runSpeechSearch = useCallback(async (spokenTranscript: string) => {
+    if (!spokenTranscript.trim()) {
+      return;
+    }
+
+    const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
+    const normalizedValue = normalized.normalizedReference.trim();
+    const nextReference = normalizedValue || spokenTranscript.trim();
+    setReference(nextReference);
+
+    if (normalized.query.kind === "spoken_reference" && normalized.structuredReference) {
+      setSpeechNotice(`Heard: "${spokenTranscript}" → ${nextReference}`);
+    } else {
+      setSpeechNotice(`Heard: "${spokenTranscript}" (review before search)`);
+    }
+
+    await handleSearch(nextReference);
+  }, [handleSearch]);
+
+  useEffect(() => {
+    if (micState !== "success" || !transcript.trim()) {
+      return;
+    }
+
+    void runSpeechSearch(transcript);
+  }, [micState, runSpeechSearch, transcript]);
 
   return (
     <div className="app-shell">
@@ -115,6 +157,29 @@ export default function App() {
                   {isLoading ? "Searching..." : "Search"}
                 </button>
               </div>
+
+              <div className="mic-controls-row">
+                <button
+                  className={`mic-toggle-button ${listening ? "mic-toggle-button--live" : ""}`}
+                  onClick={() => {
+                    if (listening) {
+                      handleStopListening();
+                    } else {
+                      void handleStartListening();
+                    }
+                  }}
+                  disabled={isLoading}
+                >
+                  {listening ? "Stop Listening" : "Start Listening"}
+                </button>
+                <span className={`mic-state-chip mic-state-chip--${micState}`}>
+                  {listening ? "Listening..." : micState === "error" ? "Mic Error" : "Mic Ready"}
+                </span>
+              </div>
+
+              <MicrophoneMeter bars={bars} micState={micState} />
+              {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
+              {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
 
               <div className="translation-row">
                 <label className="field-label" htmlFor="translation-select">
