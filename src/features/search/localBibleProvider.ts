@@ -18,6 +18,14 @@ type SearchKjvPayload = {
   translation: TranslationCode;
 };
 
+const CANONICAL_TO_DB_BOOK: Record<string, string> = {
+  Psalm: "Psalms",
+  Psalms: "Psalms",
+  "First Corinthians": "1 Corinthians",
+  "Second Corinthians": "2 Corinthians",
+  "Song of Songs": "Song of Solomon"
+};
+
 type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
 declare global {
@@ -45,12 +53,16 @@ function getInvoke(): InvokeFn | null {
   return window.__TAURI__?.invoke ?? window.__TAURI__?.tauri?.invoke ?? null;
 }
 
+function resolveDbBookName(book: string): string {
+  return CANONICAL_TO_DB_BOOK[book] ?? book;
+}
+
 export const localBibleProvider: BibleProvider = {
   async search(query: VerseQuery): Promise<VerseResult[]> {
     const translationCode = (query.translationCode as TranslationCode | undefined) ?? DEFAULT_TRANSLATION;
-    const book = query.book ?? query.canonicalBook;
+    const canonicalBook = query.canonicalBook ?? query.book;
 
-    if (!book || !query.chapter) {
+    if (!canonicalBook || !query.chapter) {
       return [];
     }
 
@@ -64,15 +76,17 @@ export const localBibleProvider: BibleProvider = {
 
     let rows: KjvVerseRow[] = [];
 
+    const dbBook = resolveDbBookName(canonicalBook);
+
     const requestPayload: SearchKjvPayload = {
-      book,
+      book: dbBook,
       chapter: query.chapter,
       verseStart,
       verseEnd,
       translation: translationCode
     };
 
-    console.debug("[search_kjv] frontend outgoing search payload", {
+    console.debug("[search_kjv] frontend outgoing payload", {
       request: requestPayload,
       rawQuery: query.raw,
       normalized: query.normalized
@@ -88,8 +102,8 @@ export const localBibleProvider: BibleProvider = {
       return [];
     }
 
-    console.debug("[search_kjv] frontend received result payload", rows);
-    console.debug("[search_kjv] SQL row count returned", rows.length);
+    console.debug("[search_kjv] frontend received rows", rows);
+    console.debug("[search_kjv] frontend row count", rows.length);
 
     if (rows.length === 0) {
       return [];
@@ -99,8 +113,8 @@ export const localBibleProvider: BibleProvider = {
     const lastVerse = rows[rows.length - 1].verse;
 
     const mapped: VerseResult = {
-      id: `${translationCode}-${book}-${query.chapter}-${firstVerse}-${lastVerse}`,
-      reference: toReference(book, query.chapter, firstVerse, lastVerse),
+      id: `${translationCode}-${rows[0].book}-${query.chapter}-${firstVerse}-${lastVerse}`,
+      reference: toReference(rows[0].book, query.chapter, firstVerse, lastVerse),
       translationCode,
       text: rows.map((row) => row.text).join(" "),
       verses: rows,
