@@ -11,12 +11,14 @@ import {
   PROJECTOR_STATE_EVENT,
   getProjectorRouteUrl,
   writeProjectorState,
-  type ProjectorPayload
+  type ProjectorPayload,
+  type ReferencePlacement
 } from "./features/display/projectorSync";
 
 type HistoryItem = {
   reference: string;
-  timestamp: string;
+  timestampMs: number;
+  repeats: number;
 };
 
 type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "error";
@@ -44,6 +46,8 @@ export default function App() {
   const [listeningState, setListeningState] = useState<ListeningWorkflowState>("idle");
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [showPresentationReference, setShowPresentationReference] = useState(true);
+  const [referencePlacement, setReferencePlacement] = useState<ReferencePlacement>("top-left");
+  const [useSafeMargins, setUseSafeMargins] = useState(true);
   const [isProjectorWindowOpen, setIsProjectorWindowOpen] = useState(false);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
@@ -62,9 +66,11 @@ export default function App() {
     () => ({
       result,
       verseText,
-      showReference: showPresentationReference
+      showReference: showPresentationReference,
+      referencePlacement,
+      useSafeMargins
     }),
-    [result, showPresentationReference, verseText]
+    [result, referencePlacement, showPresentationReference, useSafeMargins, verseText]
   );
 
   useEffect(() => {
@@ -81,22 +87,59 @@ export default function App() {
     const isDuplicateWithinCooldown =
       last?.reference === nextReference && now - last.timestampMs < HISTORY_DUPLICATE_COOLDOWN_MS;
 
-    if (isDuplicateWithinCooldown) {
-      return;
-    }
-
     lastHistoryEntryRef.current = { reference: nextReference, timestampMs: now };
 
-    setHistory((prev) =>
-      [
+    setHistory((prev) => {
+      if (isDuplicateWithinCooldown) {
+        return prev;
+      }
+
+      const existingIndex = prev.findIndex((item) => item.reference === nextReference);
+      if (existingIndex >= 0) {
+        const existingItem = prev[existingIndex];
+        const nextEntry: HistoryItem = {
+          ...existingItem,
+          timestampMs: now,
+          repeats: existingItem.repeats + 1
+        };
+        const withoutExisting = prev.filter((_, index) => index !== existingIndex);
+        return [nextEntry, ...withoutExisting].slice(0, 20);
+      }
+
+      return [
         {
           reference: nextReference,
-          timestamp: new Date(now).toLocaleTimeString()
+          timestampMs: now,
+          repeats: 1
         },
         ...prev
-      ].slice(0, 20)
-    );
+      ].slice(0, 20);
+    });
   }, []);
+
+  const syncProjectorNow = useCallback(async (nextStatus = "Projector updated") => {
+    writeProjectorState(projectorPayload);
+    try {
+      await emit(PROJECTOR_STATE_EVENT, projectorPayload);
+      setStatus(nextStatus);
+    } catch (error) {
+      console.warn("[projector] manual sync failed", error);
+      setStatus("Projector sync failed");
+    }
+  }, [projectorPayload]);
+
+  const handleClearCurrentVerse = useCallback(() => {
+    setResult({
+      ...EMPTY_RESULT,
+      message: "Verse cleared by operator."
+    });
+    setListeningState("idle");
+    setStatus("Current verse cleared");
+  }, []);
+
+  const handleRepresentCurrentVerse = useCallback(() => {
+    void syncProjectorNow("Current verse re-presented");
+  }, [syncProjectorNow]);
 
   const handleSearch = useCallback(async (overrideReference?: string) => {
     const trimmed = (overrideReference ?? reference).trim();
@@ -455,6 +498,47 @@ export default function App() {
                   />
                   Show reference in presenter view
                 </label>
+
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="reference-placement-select">
+                    Reference placement
+                  </label>
+                  <select
+                    id="reference-placement-select"
+                    value={referencePlacement}
+                    onChange={(e) => setReferencePlacement(e.target.value as ReferencePlacement)}
+                  >
+                    <option value="top-left">Top-left</option>
+                    <option value="top-center">Top-center</option>
+                    <option value="bottom-left">Bottom-left</option>
+                  </select>
+                </div>
+
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={useSafeMargins}
+                    onChange={(e) => setUseSafeMargins(e.target.checked)}
+                  />
+                  Use projector safe margins
+                </label>
+
+                <div className="service-actions">
+                  <button
+                    className="present-button present-button--secondary"
+                    type="button"
+                    onClick={handleClearCurrentVerse}
+                  >
+                    Clear Current Verse
+                  </button>
+                  <button
+                    className="present-button"
+                    type="button"
+                    onClick={handleRepresentCurrentVerse}
+                  >
+                    Re-present Current Verse
+                  </button>
+                </div>
               </div>
             </section>
 
@@ -522,8 +606,16 @@ export default function App() {
                           onClick={() => setReference(item.reference)}
                         >
                           <span className="history-list__reference">{item.reference}</span>
-                          <span className="history-list__meta">Ready to search</span>
-                          <span className="history-list__time">{item.timestamp}</span>
+                          <span className="history-list__meta">
+                            {item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}
+                          </span>
+                          <span className="history-list__time">
+                            {new Date(item.timestampMs).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              second: "2-digit"
+                            })}
+                          </span>
                         </button>
                       </li>
                     ))}
@@ -591,9 +683,13 @@ export default function App() {
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>
             Exit Fullscreen
           </button>
-          <div className="presentation-mode__content">
+          <div className={`presentation-mode__content ${useSafeMargins ? "presentation-mode__content--safe" : ""}`}>
             {showPresentationReference ? (
-              <p className="presentation-mode__reference">{result.reference}</p>
+              <p
+                className={`presentation-mode__reference presentation-mode__reference--${referencePlacement}`}
+              >
+                {result.reference}
+              </p>
             ) : null}
             <pre className={`presentation-mode__verse ${result.found ? "" : "presentation-mode__verse--empty"}`}>
               {verseText}

@@ -5,13 +5,16 @@ import {
   getProjectorStorageKey,
   PROJECTOR_STATE_EVENT,
   readProjectorState,
-  type ProjectorPayload
+  type ProjectorPayload,
+  type ReferencePlacement
 } from "../features/display/projectorSync";
 
 type ProjectorViewState = {
   result: SearchResult;
   verseText: string;
   showReference: boolean;
+  referencePlacement: ReferencePlacement;
+  useSafeMargins: boolean;
 };
 
 const EMPTY_RESULT: SearchResult = {
@@ -26,11 +29,16 @@ const EMPTY_RESULT: SearchResult = {
 const EMPTY_STATE: ProjectorViewState = {
   result: EMPTY_RESULT,
   verseText: "Awaiting verse from operator console.",
-  showReference: true
+  showReference: true,
+  referencePlacement: "top-left",
+  useSafeMargins: true
 };
 
 export default function ProjectorView() {
-  const [state, setState] = useState<ProjectorViewState>(() => readProjectorState() ?? EMPTY_STATE);
+  const [state, setState] = useState<ProjectorViewState>(() => {
+    const persisted = readProjectorState();
+    return { ...EMPTY_STATE, ...persisted };
+  });
 
   useEffect(() => {
     const storageKey = getProjectorStorageKey();
@@ -38,7 +46,7 @@ export default function ProjectorView() {
     const syncFromStorage = () => {
       const next = readProjectorState();
       if (next) {
-        setState(next);
+        setState((prev) => ({ ...prev, ...next }));
       }
     };
 
@@ -71,8 +79,12 @@ export default function ProjectorView() {
 
   return (
     <main className="projector-screen" aria-live="polite">
-      <div className="projector-screen__content">
-        {state.showReference ? <p className="projector-screen__reference">{state.result.reference}</p> : null}
+      <div className={`projector-screen__content ${state.useSafeMargins ? "projector-screen__content--safe" : ""}`}>
+        {state.showReference ? (
+          <p className={`projector-screen__reference projector-screen__reference--${state.referencePlacement}`}>
+            {state.result.reference}
+          </p>
+        ) : null}
         <pre className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}>
           {verseText}
         </pre>
