@@ -29,20 +29,37 @@ struct SearchResult {
     message: Option<String>,
 }
 
-#[derive(Serialize)]
-struct BookRow {
-    id: i64,
-    name: String,
-}
-
 fn normalize_book_name(book: &str) -> String {
     match book.trim().to_lowercase().as_str() {
         "psalm" | "psalms" => "Psalms".to_string(),
-        "song of songs" => "Song of Solomon".to_string(),
-        "first corinthians" | "1 corinthians" => "1 Corinthians".to_string(),
-        "second corinthians" | "2 corinthians" => "2 Corinthians".to_string(),
-        "first kings" | "1 kings" => "1 Kings".to_string(),
-        "second kings" | "2 kings" => "2 Kings".to_string(),
+        "song of songs" | "song of solomon" => "Song of Solomon".to_string(),
+        "revelations" | "revelation" => "Revelation".to_string(),
+
+        "first samuel" | "one samuel" | "1 samuel" => "1 Samuel".to_string(),
+        "second samuel" | "two samuel" | "2 samuel" => "2 Samuel".to_string(),
+
+        "first kings" | "one kings" | "1 kings" => "1 Kings".to_string(),
+        "second kings" | "two kings" | "2 kings" => "2 Kings".to_string(),
+
+        "first chronicles" | "one chronicles" | "1 chronicles" => "1 Chronicles".to_string(),
+        "second chronicles" | "two chronicles" | "2 chronicles" => "2 Chronicles".to_string(),
+
+        "first corinthians" | "one corinthians" | "1 corinthians" => "1 Corinthians".to_string(),
+        "second corinthians" | "two corinthians" | "2 corinthians" => "2 Corinthians".to_string(),
+
+        "first thessalonians" | "one thessalonians" | "1 thessalonians" => "1 Thessalonians".to_string(),
+        "second thessalonians" | "two thessalonians" | "2 thessalonians" => "2 Thessalonians".to_string(),
+
+        "first timothy" | "one timothy" | "1 timothy" => "1 Timothy".to_string(),
+        "second timothy" | "two timothy" | "2 timothy" => "2 Timothy".to_string(),
+
+        "first peter" | "one peter" | "1 peter" => "1 Peter".to_string(),
+        "second peter" | "two peter" | "2 peter" => "2 Peter".to_string(),
+
+        "first john" | "one john" | "1 john" => "1 John".to_string(),
+        "second john" | "two john" | "2 john" => "2 John".to_string(),
+        "third john" | "three john" | "3 john" => "3 John".to_string(),
+
         other => other
             .split_whitespace()
             .map(|part| {
@@ -57,8 +74,32 @@ fn normalize_book_name(book: &str) -> String {
     }
 }
 
+fn map_book_to_db_name(book: &str) -> String {
+    match book.trim() {
+        "1 Samuel" => "I Samuel".to_string(),
+        "2 Samuel" => "II Samuel".to_string(),
+        "1 Kings" => "I Kings".to_string(),
+        "2 Kings" => "II Kings".to_string(),
+        "1 Chronicles" => "I Chronicles".to_string(),
+        "2 Chronicles" => "II Chronicles".to_string(),
+        "1 Corinthians" => "I Corinthians".to_string(),
+        "2 Corinthians" => "II Corinthians".to_string(),
+        "1 Thessalonians" => "I Thessalonians".to_string(),
+        "2 Thessalonians" => "II Thessalonians".to_string(),
+        "1 Timothy" => "I Timothy".to_string(),
+        "2 Timothy" => "II Timothy".to_string(),
+        "1 Peter" => "I Peter".to_string(),
+        "2 Peter" => "II Peter".to_string(),
+        "1 John" => "I John".to_string(),
+        "2 John" => "II John".to_string(),
+        "3 John" => "III John".to_string(),
+        "Revelation" => "The Revelation of St. John the Divine".to_string(),
+        other => other.to_string(),
+    }
+}
+
 fn parse_reference(input: &str) -> Option<ParsedReference> {
-    let trimmed = input.trim();
+    let trimmed = input.trim().replace('/', ":");
     let (book_part, cv_part) = trimmed.rsplit_once(' ')?;
     let book = normalize_book_name(book_part);
 
@@ -101,7 +142,10 @@ fn resolve_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
             return Ok(bundled_path);
         }
 
-        let alt_bundled_path = resource_dir.join("resources").join("bibles").join("KJV.db");
+        let alt_bundled_path = resource_dir
+            .join("resources")
+            .join("bibles")
+            .join("KJV.db");
         if alt_bundled_path.exists() {
             println!("using alt bundled db path: {:?}", alt_bundled_path);
             return Ok(alt_bundled_path);
@@ -116,12 +160,81 @@ fn resolve_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Err("Could not resolve resource directory and dev DB path was not found".to_string())
 }
 
+fn resolve_book_row(conn: &Connection, canonical_book: &str) -> Option<(i64, String)> {
+    let mapped = map_book_to_db_name(canonical_book);
+    println!("canonical book => {}", canonical_book);
+    println!("mapped db book => {}", mapped);
+
+    let mut candidates: Vec<String> = vec![mapped.clone()];
+
+    match canonical_book {
+        "Psalms" => {
+            candidates.push("Psalm".to_string());
+            candidates.push("Psalms".to_string());
+        }
+        "Song of Solomon" => {
+            candidates.push("Song of Songs".to_string());
+            candidates.push("Song of Solomon".to_string());
+        }
+        "Revelation" => {
+            candidates.push("Revelation".to_string());
+            candidates.push("Revelations".to_string());
+            candidates.push("The Revelation".to_string());
+            candidates.push("The Revelation of St. John the Divine".to_string());
+            candidates.push("The Revelation of John".to_string());
+            candidates.push("Apocalypse".to_string());
+        }
+        _ => {}
+    }
+
+    candidates.sort();
+    candidates.dedup();
+
+    for candidate in &candidates {
+        println!("trying book candidate => {}", candidate);
+
+        let attempt: Option<(i64, String)> = conn
+            .query_row(
+                "SELECT id, name FROM KJV_books WHERE LOWER(name) = LOWER(?1) LIMIT 1",
+                params![candidate],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+
+        if let Some(row) = attempt {
+            println!("exact candidate match => {} -> {}", candidate, row.1);
+            return Some(row);
+        }
+    }
+
+    for candidate in &candidates {
+        let like_pattern = format!("%{}%", candidate);
+        println!("trying LIKE candidate => {}", like_pattern);
+
+        let attempt: Option<(i64, String)> = conn
+            .query_row(
+                "SELECT id, name FROM KJV_books WHERE LOWER(name) LIKE LOWER(?1) LIMIT 1",
+                params![like_pattern],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .ok();
+
+        if let Some(row) = attempt {
+            println!("LIKE candidate match => {} -> {}", candidate, row.1);
+            return Some(row);
+        }
+    }
+
+    println!("no DB book match found for {}", canonical_book);
+    None
+}
+
 #[tauri::command]
 fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<SearchResult, String> {
     println!("incoming reference: {}", reference);
 
-    let parsed = parse_reference(&reference)
-        .ok_or_else(|| format!("Invalid reference format: {}", reference))?;
+    let parsed =
+        parse_reference(&reference).ok_or_else(|| format!("Invalid reference format: {}", reference))?;
 
     println!(
         "parsed => book={}, chapter={}, verse_start={}, verse_end={}",
@@ -133,13 +246,7 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
 
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let book_row: Option<(i64, String)> = conn
-        .query_row(
-            "SELECT id, name FROM KJV_books WHERE name = ?1 LIMIT 1",
-            params![parsed.book],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .ok();
+    let book_row = resolve_book_row(&conn, &parsed.book);
 
     let (book_id, book_name) = match book_row {
         Some(v) => v,
@@ -170,12 +277,7 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
 
     let verse_iter = stmt
         .query_map(
-            params![
-                book_id,
-                parsed.chapter,
-                parsed.verse_start,
-                parsed.verse_end
-            ],
+            params![book_id, parsed.chapter, parsed.verse_start, parsed.verse_end],
             |row| {
                 let verse: i64 = row.get(0)?;
                 let text: String = row.get(1)?;
@@ -201,9 +303,7 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
             reference: reference.clone(),
             theme: "Scripture Lookup".to_string(),
             verses: vec![],
-            message: Some(
-                "No result found in local KJV database. Try another reference.".to_string(),
-            ),
+            message: Some("No result found in local KJV database. Try another reference.".to_string()),
         });
     }
 
@@ -226,63 +326,9 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
     })
 }
 
-#[tauri::command]
-fn inspect_kjv_books(app: tauri::AppHandle) -> Result<Vec<BookRow>, String> {
-    let db_path = resolve_db_path(&app)?;
-    println!("inspector using db path: {:?}", db_path);
-
-    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
-    let mut stmt = conn
-        .prepare("SELECT id, name FROM KJV_books ORDER BY id")
-        .map_err(|e| e.to_string())?;
-
-    let book_iter = stmt
-        .query_map([], |row| {
-            Ok(BookRow {
-                id: row.get(0)?,
-                name: row.get(1)?,
-            })
-        })
-        .map_err(|e| e.to_string())?;
-
-    let books: Vec<BookRow> = book_iter
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| e.to_string())?;
-
-    println!("========== KJV_books (id, name) ==========");
-    for book in &books {
-        println!("{:>2} | {}", book.id, book.name);
-    }
-
-    let special_terms = [
-        "Samuel",
-        "Kings",
-        "Chronicles",
-        "Corinthians",
-        "Thessalonians",
-        "Timothy",
-        "Peter",
-        "John",
-    ];
-
-    println!("========== KJV_books filtered special names ==========");
-    for term in special_terms {
-        println!("-- contains '{}' --", term);
-        books
-            .iter()
-            .filter(|book| book.name.contains(term))
-            .for_each(|book| println!("{:>2} | {}", book.id, book.name));
-    }
-
-    Ok(books)
-}
-
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![
-            search_kjv_reference,
-            inspect_kjv_books
-        ])
+        .invoke_handler(tauri::generate_handler![search_kjv_reference])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
