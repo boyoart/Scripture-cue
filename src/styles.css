@@ -465,3 +465,44 @@ select {
   font-weight: 600;
   font-size: 0.84rem;
 }
+
+.present-button--secondary {
+  border-color: #465a9b;
+  background: linear-gradient(145deg, #1f2f5c, #172447);
+}
+
+.projector-screen {
+  min-height: 100vh;
+  background: #02040d;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+}
+
+.projector-screen__content {
+  width: min(1600px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1.3rem;
+}
+
+.projector-screen__reference {
+  margin: 0;
+  font-size: clamp(1.1rem, 2vw, 1.8rem);
+  color: #c5d2ff;
+  letter-spacing: 0.03em;
+}
+
+.projector-screen__verse {
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 5rem);
+  line-height: 1.35;
+  white-space: pre-line;
+  text-wrap: balance;
+}
+
+.projector-screen__verse--empty {
+  color: #b6c3f5;
+}
