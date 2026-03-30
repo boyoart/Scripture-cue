@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
@@ -9,6 +9,11 @@ type HistoryItem = {
   reference: string;
   timestamp: string;
 };
+
+type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "error";
+
+const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
+const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
 
 const EMPTY_RESULT: SearchResult = {
   found: false,
@@ -27,6 +32,9 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
   const [speechDebug, setSpeechDebug] = useState<NormalizedResult | null>(null);
+  const [listeningState, setListeningState] = useState<ListeningWorkflowState>("idle");
+  const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
+  const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
   const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
 
   const verseText = useMemo(() => {
@@ -37,6 +45,30 @@ export default function App() {
     return result.verses.map((v) => `${v.verse}. ${v.text}`).join("\n");
   }, [result]);
 
+  const pushHistoryWithCooldown = useCallback((nextReference: string) => {
+    const now = Date.now();
+    const last = lastHistoryEntryRef.current;
+
+    const isDuplicateWithinCooldown =
+      last?.reference === nextReference && now - last.timestampMs < HISTORY_DUPLICATE_COOLDOWN_MS;
+
+    if (isDuplicateWithinCooldown) {
+      return;
+    }
+
+    lastHistoryEntryRef.current = { reference: nextReference, timestampMs: now };
+
+    setHistory((prev) =>
+      [
+        {
+          reference: nextReference,
+          timestamp: new Date(now).toLocaleTimeString()
+        },
+        ...prev
+      ].slice(0, 20)
+    );
+  }, []);
+
   const handleSearch = useCallback(async (overrideReference?: string) => {
     const trimmed = (overrideReference ?? reference).trim();
     if (!trimmed) return;
@@ -44,23 +76,17 @@ export default function App() {
     try {
       setIsLoading(true);
       setStatus("Searching...");
+      setListeningState("processing");
 
       const response = await searchKjv(trimmed);
       setResult(response);
 
       if (response.found && response.verses.length > 0) {
-        setHistory((prev) =>
-          [
-            {
-              reference: response.reference,
-              timestamp: new Date().toLocaleTimeString()
-            },
-            ...prev
-          ].slice(0, 20)
-        );
-
+        pushHistoryWithCooldown(response.reference);
+        setListeningState("verse_loaded");
         setStatus("Verse loaded");
       } else {
+        setListeningState("idle");
         setStatus(response.message ?? "No result found");
       }
     } catch (error) {
@@ -76,19 +102,22 @@ export default function App() {
         message: `Search failed: ${message}`
       });
 
+      setListeningState("error");
       setStatus("Search failed");
     } finally {
       setIsLoading(false);
     }
-  }, [reference]);
+  }, [pushHistoryWithCooldown, reference]);
 
   async function handleStartListening() {
     setSpeechNotice(null);
+    setListeningState("listening");
     await startListening();
   }
 
   function handleStopListening() {
     stopListening("idle");
+    setListeningState("idle");
     setStatus("Listening stopped");
   }
 
@@ -109,13 +138,49 @@ export default function App() {
     const nextReference = canAutoSearch ? normalizedValue || spokenTranscript.trim() : spokenTranscript.trim();
     setReference(nextReference);
 
-    if (canAutoSearch) {
-      setSpeechNotice(`Heard: "${spokenTranscript}" → ${nextReference}`);
-      await handleSearch(nextReference);
-    } else {
+    if (!canAutoSearch) {
+      setListeningState("idle");
       setSpeechNotice(`Heard: "${spokenTranscript}" (review before search)`);
+      return;
     }
+
+    const now = Date.now();
+    const lastAutoSearch = lastAutoSearchRef.current;
+    const duplicateAutoSearch =
+      lastAutoSearch?.normalizedReference === nextReference &&
+      now - lastAutoSearch.timestampMs < AUTO_SEARCH_DUPLICATE_COOLDOWN_MS;
+
+    if (duplicateAutoSearch) {
+      setListeningState("idle");
+      setSpeechNotice(`Heard duplicate reference "${nextReference}" (suppressed)`);
+      return;
+    }
+
+    lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
+    setSpeechNotice(`Heard: "${spokenTranscript}" → ${nextReference}`);
+    await handleSearch(nextReference);
   }, [handleSearch]);
+
+  useEffect(() => {
+    if (micState === "listening") {
+      setListeningState("listening");
+      return;
+    }
+
+    if (micState === "processing") {
+      setListeningState("processing");
+      return;
+    }
+
+    if (micState === "error") {
+      setListeningState("error");
+      return;
+    }
+
+    if (micState === "idle" && listeningState === "listening") {
+      setListeningState("idle");
+    }
+  }, [listeningState, micState]);
 
   useEffect(() => {
     if (micState !== "success" || !transcript.trim()) {
@@ -124,6 +189,22 @@ export default function App() {
 
     void runSpeechSearch(transcript);
   }, [micState, runSpeechSearch, transcript]);
+
+  const listeningStateLabel = useMemo(() => {
+    switch (listeningState) {
+      case "listening":
+        return "Listening";
+      case "processing":
+        return "Processing";
+      case "verse_loaded":
+        return "Verse Loaded";
+      case "error":
+        return "Error";
+      case "idle":
+      default:
+        return "Idle";
+    }
+  }, [listeningState]);
 
   return (
     <div className="app-shell">
@@ -180,8 +261,8 @@ export default function App() {
                 >
                   {listening ? "Stop Listening" : "Start Listening"}
                 </button>
-                <span className={`mic-state-chip mic-state-chip--${micState}`}>
-                  {listening ? "Listening..." : micState === "error" ? "Mic Error" : "Mic Ready"}
+                <span className={`mic-state-chip mic-state-chip--${listeningState}`}>
+                  {listeningStateLabel}
                 </span>
               </div>
 
