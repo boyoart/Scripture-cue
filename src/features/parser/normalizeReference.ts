@@ -291,6 +291,7 @@ function parseReferenceParts(remaining: string): {
     .replace(/\bverse\b/g, " ")
     .split(" ")
     .filter(Boolean);
+  const compactNumericToken = tokens.length === 1 && /^\d+$/.test(tokens[0]) ? tokens[0] : undefined;
   const values: number[] = [];
   let sawRangeJoiner = false;
 
@@ -319,6 +320,32 @@ function parseReferenceParts(remaining: string): {
   }
 
   if (values.length === 1) {
+    if (compactNumericToken) {
+      if (compactNumericToken.length === 2) {
+        return {
+          chapter: Number(compactNumericToken[0]),
+          verseStart: Number(compactNumericToken[1]),
+          confidenceBoost: 0.24
+        };
+      }
+
+      if (compactNumericToken.length === 3) {
+        return {
+          chapter: Number(compactNumericToken.slice(0, 1)),
+          verseStart: Number(compactNumericToken.slice(1)),
+          confidenceBoost: 0.24
+        };
+      }
+
+      if (compactNumericToken.length === 4) {
+        return {
+          chapter: Number(compactNumericToken.slice(0, 2)),
+          verseStart: Number(compactNumericToken.slice(2)),
+          confidenceBoost: 0.22
+        };
+      }
+    }
+
     return { chapter: values[0], confidenceBoost: 0.1 };
   }
 

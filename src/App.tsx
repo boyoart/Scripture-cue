@@ -97,16 +97,19 @@ export default function App() {
 
     const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
     const normalizedValue = normalized.normalizedReference.trim();
-    const nextReference = normalizedValue || spokenTranscript.trim();
+    const canAutoSearch =
+      normalized.query.kind === "spoken_reference" &&
+      Boolean(normalized.structuredReference) &&
+      normalized.confidence >= 0.7;
+    const nextReference = canAutoSearch ? normalizedValue || spokenTranscript.trim() : spokenTranscript.trim();
     setReference(nextReference);
 
-    if (normalized.query.kind === "spoken_reference" && normalized.structuredReference) {
+    if (canAutoSearch) {
       setSpeechNotice(`Heard: "${spokenTranscript}" → ${nextReference}`);
+      await handleSearch(nextReference);
     } else {
       setSpeechNotice(`Heard: "${spokenTranscript}" (review before search)`);
     }
-
-    await handleSearch(nextReference);
   }, [handleSearch]);
 
   useEffect(() => {
