@@ -1,6 +1,8 @@
 import type { SearchResult } from "../../api";
 
 export const PROJECTOR_WINDOW_LABEL = "projector";
+export const PROJECTOR_VIEW_QUERY = "projector";
+export const PROJECTOR_STATE_EVENT = "projector:state-updated";
 const PROJECTOR_STATE_STORAGE_KEY = "scripture-cue:projector-state";
 
 export type ProjectorPayload = {
@@ -33,4 +35,9 @@ export function writeProjectorState(payload: ProjectorPayload) {
 
 export function getProjectorStorageKey() {
   return PROJECTOR_STATE_STORAGE_KEY;
+}
+
+export function getProjectorRouteUrl(currentPathname: string) {
+  const safePath = currentPathname.endsWith("/") ? `${currentPathname}index.html` : currentPathname;
+  return `${safePath}?view=${PROJECTOR_VIEW_QUERY}`;
 }

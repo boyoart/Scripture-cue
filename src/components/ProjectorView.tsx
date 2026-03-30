@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
-import { getProjectorStorageKey, readProjectorState } from "../features/display/projectorSync";
+import {
+  getProjectorStorageKey,
+  PROJECTOR_STATE_EVENT,
+  readProjectorState,
+  type ProjectorPayload
+} from "../features/display/projectorSync";
 
 type ProjectorViewState = {
   result: SearchResult;
@@ -44,8 +50,19 @@ export default function ProjectorView() {
       }
     };
 
+    const unlistenPromise = listen<ProjectorPayload>(PROJECTOR_STATE_EVENT, (event) => {
+      if (event.payload) {
+        setState(event.payload);
+      }
+    });
+
+    const syncTimer = window.setInterval(syncFromStorage, 500);
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    return () => {
+      window.clearInterval(syncTimer);
+      window.removeEventListener("storage", onStorage);
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
   }, []);
 
   const verseText = useMemo(() => {

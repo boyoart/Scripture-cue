@@ -3,5 +3,9 @@
   "identifier": "default",
   "description": "Default capability for the main Scripture Cue window",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": [
+    "core:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:allow-create"
+  ]
 }

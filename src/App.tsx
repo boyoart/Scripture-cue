@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/window";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
-import ProjectorView from "./components/ProjectorView";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
 import { CANONICAL_BOOK_DICTIONARY } from "./features/parser/spokenBookMatcher";
 import { useSpeechMeter } from "./features/speech/useSpeechMeter";
 import {
   PROJECTOR_WINDOW_LABEL,
+  PROJECTOR_STATE_EVENT,
+  getProjectorRouteUrl,
   writeProjectorState,
   type ProjectorPayload
 } from "./features/display/projectorSync";
@@ -30,9 +32,6 @@ const EMPTY_RESULT: SearchResult = {
   verses: [],
   message: "No result loaded yet."
 };
-
-const isProjectorWindow =
-  typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "projector";
 
 export default function App() {
   const [reference, setReference] = useState("John 3:16");
@@ -70,6 +69,9 @@ export default function App() {
 
   useEffect(() => {
     writeProjectorState(projectorPayload);
+    void emit(PROJECTOR_STATE_EVENT, projectorPayload).catch((error) => {
+      console.warn("[projector] failed to emit sync event", error);
+    });
   }, [projectorPayload]);
 
   const pushHistoryWithCooldown = useCallback((nextReference: string) => {
@@ -189,10 +191,6 @@ export default function App() {
   }, [handleSearch]);
 
   useEffect(() => {
-    if (isProjectorWindow) {
-      return;
-    }
-
     const existingWindow = WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
     if (!existingWindow) {
       setIsProjectorWindowOpen(false);
@@ -279,37 +277,57 @@ export default function App() {
       setIsProjectorWindowOpen(true);
       await existing.show();
       await existing.setFocus();
+      setStatus("Projector view focused");
       return;
     }
 
-    const projectorWindow = new WebviewWindow(PROJECTOR_WINDOW_LABEL, {
-      url: `${window.location.pathname}?view=projector`,
-      title: "Scripture Cue Projector",
-      width: 1600,
-      height: 900,
-      resizable: true,
-      fullscreen: false,
-      decorations: true,
-      center: true
-    });
+    try {
+      const projectorWindow = new WebviewWindow(PROJECTOR_WINDOW_LABEL, {
+        url: getProjectorRouteUrl(window.location.pathname),
+        title: "Scripture Cue Projector",
+        width: 1600,
+        height: 900,
+        resizable: true,
+        fullscreen: false,
+        decorations: true,
+        center: true
+      });
 
-    projectorWindowRef.current = projectorWindow;
-    writeProjectorState(projectorPayload);
+      projectorWindowRef.current = projectorWindow;
+      writeProjectorState(projectorPayload);
 
-    projectorWindow.once("tauri://created", () => {
-      setIsProjectorWindowOpen(true);
-    });
+      projectorWindow.once("tauri://created", () => {
+        setIsProjectorWindowOpen(true);
+        setStatus("Projector view ready");
+      });
 
-    projectorWindow.once("tauri://error", () => {
-      projectorWindowRef.current = null;
-      setIsProjectorWindowOpen(false);
-      setStatus("Projector window failed to open");
-    });
+      projectorWindow.once("tauri://error", (event) => {
+        projectorWindowRef.current = null;
+        setIsProjectorWindowOpen(false);
+        const errorMessage =
+          event.payload instanceof Error
+            ? event.payload.message
+            : typeof event.payload === "string"
+              ? event.payload
+              : JSON.stringify(event.payload ?? "Unknown projector error");
+        console.error("[projector] window open failed", event.payload);
+        setStatus(`Projector failed to open: ${errorMessage}`);
+      });
 
-    projectorWindow.once("tauri://close-requested", () => {
-      projectorWindowRef.current = null;
-      setIsProjectorWindowOpen(false);
-    });
+      projectorWindow.once("tauri://close-requested", () => {
+        projectorWindowRef.current = null;
+        setIsProjectorWindowOpen(false);
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : JSON.stringify(error ?? "Unknown projector error");
+      console.error("[projector] window creation threw", error);
+      setStatus(`Projector failed to open: ${errorMessage}`);
+    }
   }, [projectorPayload]);
 
   const handleCloseProjectorView = useCallback(async () => {
@@ -333,10 +351,6 @@ export default function App() {
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
-
-  if (isProjectorWindow) {
-    return <ProjectorView />;
-  }
 
   return (
     <>
