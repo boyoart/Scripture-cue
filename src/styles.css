@@ -135,7 +135,9 @@ select {
 .mic-controls-row {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.2rem;
 }
 
 .mic-toggle-button {
@@ -166,6 +168,21 @@ select {
   border-color: #7f53bd;
 }
 
+.mic-state-chip--idle {
+  color: #b8c4f6;
+  border-color: #3b4a80;
+}
+
+.mic-state-chip--processing {
+  color: #ffdba2;
+  border-color: #b0823f;
+}
+
+.mic-state-chip--verse_loaded {
+  color: #9ae5bf;
+  border-color: #2f9367;
+}
+
 .mic-state-chip--success {
   color: #9ae5bf;
   border-color: #2f9367;
@@ -180,6 +197,10 @@ select {
   margin: 0;
   font-size: 0.82rem;
   color: #9fb0e1;
+  border: 1px solid #2f3a66;
+  background: rgba(15, 22, 49, 0.75);
+  border-radius: 9px;
+  padding: 0.45rem 0.6rem;
 }
 
 .mic-status-line--error {
