@@ -1,12 +1,18 @@
 import type { VerseQuery } from "../../types/search";
-import { matchSpokenBook } from "./spokenBookMatcher";
+import { matchSpokenBook, type MatchResult } from "./spokenBookMatcher";
 
-type NormalizedResult = {
+export type NormalizedResult = {
   query: VerseQuery;
   rawTranscript: string;
   normalizedReference: string;
   confidence: number;
   canonicalBook?: string;
+  ambiguity: "clear" | "ambiguous";
+  debug: {
+    transcriptSanitized: string;
+    bookMatchSource: MatchResult["source"];
+    reason?: string;
+  };
   structuredReference?: {
     book: string;
     chapter: number;
@@ -14,7 +20,6 @@ type NormalizedResult = {
     verseEnd: number;
   };
 };
-
 
 const SIMPLE_NUMBERS: Record<string, number> = {
   zero: 0,
@@ -258,12 +263,18 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
     return {
       rawTranscript,
       normalizedReference: cleaned,
-      confidence: 0.1,
+      confidence: Math.min(0.45, bookMatch.confidence || 0.1),
+      ambiguity: "ambiguous",
+      debug: {
+        transcriptSanitized: cleaned,
+        bookMatchSource: bookMatch.source,
+        reason: bookMatch.reason ?? "Unable to safely match a Bible book"
+      },
       query: {
         kind: "phrase",
         raw: rawTranscript,
         phrase: cleaned,
-        confidence: 0.1,
+        confidence: Math.min(0.45, bookMatch.confidence || 0.1),
         translationCode
       }
     };
@@ -298,6 +309,12 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
     normalizedReference,
     canonicalBook: bookMatch.canonicalBook,
     confidence,
+    ambiguity: bookMatch.ambiguous ? "ambiguous" : "clear",
+    debug: {
+      transcriptSanitized: cleaned,
+      bookMatchSource: bookMatch.source,
+      reason: bookMatch.reason
+    },
     structuredReference,
     query: {
       kind: "spoken_reference",
@@ -318,6 +335,7 @@ export function normalizeTypedReference(input: string, translationCode: string):
   const normalized = normalizeTranscriptToReference(input, translationCode);
   return {
     ...normalized,
+    ambiguity: "clear",
     query: {
       ...normalized.query,
       kind: "exact_reference"

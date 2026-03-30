@@ -24,11 +24,17 @@ const CANONICAL_BOOKS: CanonicalBookEntry[] = [
   { canonical: "Job", aliases: ["job"] },
   { canonical: "Psalms", aliases: ["psalm", "psalms", "psalm's", "ps"] },
   { canonical: "Proverbs", aliases: ["proverb", "proverbs", "prov"] },
-  { canonical: "Ecclesiastes", aliases: ["ecclesiastes", "eccl"] },
+  {
+    canonical: "Ecclesiastes",
+    aliases: ["ecclesiastes", "eccl", "ecclesiastic", "eccleasiastes", "ecclesiasties", "ecclessiastes"]
+  },
   { canonical: "Song of Solomon", aliases: ["song", "song of songs", "song of solomon"] },
   { canonical: "Isaiah", aliases: ["isaiah", "isa"] },
   { canonical: "Jeremiah", aliases: ["jeremiah", "jer"] },
-  { canonical: "Lamentations", aliases: ["lamentation", "lamentations", "lam"] },
+  {
+    canonical: "Lamentations",
+    aliases: ["lamentation", "lamentations", "lam", "lamintations", "lamenations"]
+  },
   { canonical: "Ezekiel", aliases: ["ezekiel", "ezek"] },
   { canonical: "Daniel", aliases: ["daniel", "dan"] },
   { canonical: "Hosea", aliases: ["hosea", "hos"] },
@@ -38,10 +44,10 @@ const CANONICAL_BOOKS: CanonicalBookEntry[] = [
   { canonical: "Jonah", aliases: ["jonah"] },
   { canonical: "Micah", aliases: ["micah", "mic"] },
   { canonical: "Nahum", aliases: ["nahum", "nah"] },
-  { canonical: "Habakkuk", aliases: ["habakkuk", "hab"] },
-  { canonical: "Zephaniah", aliases: ["zephaniah", "zeph"] },
+  { canonical: "Habakkuk", aliases: ["habakkuk", "hab", "habakuk", "habacuc"] },
+  { canonical: "Zephaniah", aliases: ["zephaniah", "zeph", "zephania", "zefaniah"] },
   { canonical: "Haggai", aliases: ["haggai", "hag"] },
-  { canonical: "Zechariah", aliases: ["zechariah", "zech"] },
+  { canonical: "Zechariah", aliases: ["zechariah", "zech", "zachariah", "zechariah"] },
   { canonical: "Malachi", aliases: ["malachi", "mal"] },
   { canonical: "Matthew", aliases: ["matthew", "matt"] },
   { canonical: "Mark", aliases: ["mark", "mrk"] },
@@ -55,12 +61,18 @@ const CANONICAL_BOOKS: CanonicalBookEntry[] = [
   { canonical: "Ephesians", aliases: ["ephesians", "eph"] },
   { canonical: "Philippians", aliases: ["philippians", "phil"] },
   { canonical: "Colossians", aliases: ["colossians", "col"] },
-  { canonical: "1 Thessalonians", aliases: ["1 thessalonians", "first thessalonians", "one thessalonians", "1st thessalonians"] },
-  { canonical: "2 Thessalonians", aliases: ["2 thessalonians", "second thessalonians", "two thessalonians", "2nd thessalonians"] },
+  {
+    canonical: "1 Thessalonians",
+    aliases: ["1 thessalonians", "first thessalonians", "one thessalonians", "1st thessalonians", "first thesselonians"]
+  },
+  {
+    canonical: "2 Thessalonians",
+    aliases: ["2 thessalonians", "second thessalonians", "two thessalonians", "2nd thessalonians", "second thesselonians"]
+  },
   { canonical: "1 Timothy", aliases: ["1 timothy", "first timothy", "one timothy", "1st timothy"] },
   { canonical: "2 Timothy", aliases: ["2 timothy", "second timothy", "two timothy", "2nd timothy"] },
   { canonical: "Titus", aliases: ["titus", "tit"] },
-  { canonical: "Philemon", aliases: ["philemon", "phlm"] },
+  { canonical: "Philemon", aliases: ["philemon", "phlm", "phileman", "filemon"] },
   { canonical: "Hebrews", aliases: ["hebrews", "heb"] },
   { canonical: "James", aliases: ["james", "jas"] },
   { canonical: "1 Peter", aliases: ["1 peter", "first peter", "one peter", "1st peter"] },
@@ -88,11 +100,14 @@ const FLATTENED_ALIASES: FlattenedAlias[] = CANONICAL_BOOKS.flatMap((book) =>
 
 const MAX_ALIAS_TOKEN_LENGTH = Math.max(...FLATTENED_ALIASES.map((entry) => entry.aliasTokens.length));
 
-type MatchResult = {
+export type MatchResult = {
   canonicalBook?: string;
   consumedTokenCount: number;
   confidence: number;
+  ambiguous: boolean;
   source: "none" | "exact" | "fuzzy";
+  bestCandidate?: string;
+  reason?: string;
 };
 
 function levenshteinDistance(a: string, b: string): number {
@@ -147,7 +162,7 @@ function fuzzyThresholdByTokenCount(tokenCount: number): number {
 export function matchSpokenBook(transcript: string): MatchResult {
   const tokens = transcript.split(" ").filter(Boolean);
   if (tokens.length === 0) {
-    return { consumedTokenCount: 0, confidence: 0, source: "none" };
+    return { consumedTokenCount: 0, confidence: 0, ambiguous: true, source: "none", reason: "No transcript tokens" };
   }
 
   for (let tokenLength = Math.min(tokens.length, MAX_ALIAS_TOKEN_LENGTH); tokenLength >= 1; tokenLength -= 1) {
@@ -159,7 +174,9 @@ export function matchSpokenBook(transcript: string): MatchResult {
         canonicalBook: exactMatch.canonical,
         consumedTokenCount: tokenLength,
         confidence: 1,
-        source: "exact"
+        ambiguous: false,
+        source: "exact",
+        bestCandidate: exactMatch.canonical
       };
     }
   }
@@ -183,7 +200,7 @@ export function matchSpokenBook(transcript: string): MatchResult {
   }
 
   if (!bestFuzzyMatch) {
-    return { consumedTokenCount: 0, confidence: 0, source: "none" };
+    return { consumedTokenCount: 0, confidence: 0, ambiguous: true, source: "none", reason: "No fuzzy candidate" };
   }
 
   const minimumScore = fuzzyThresholdByTokenCount(bestFuzzyMatch.consumedTokenCount);
@@ -191,14 +208,23 @@ export function matchSpokenBook(transcript: string): MatchResult {
   const hasSafeConfidence = bestFuzzyMatch.score >= minimumScore && margin >= 0.04;
 
   if (!hasSafeConfidence) {
-    return { consumedTokenCount: 0, confidence: bestFuzzyMatch.score, source: "none" };
+    return {
+      consumedTokenCount: 0,
+      confidence: bestFuzzyMatch.score,
+      ambiguous: true,
+      source: "none",
+      bestCandidate: bestFuzzyMatch.canonical,
+      reason: `Fuzzy score ${bestFuzzyMatch.score.toFixed(2)} below safety rules`
+    };
   }
 
   return {
     canonicalBook: bestFuzzyMatch.canonical,
     consumedTokenCount: bestFuzzyMatch.consumedTokenCount,
     confidence: bestFuzzyMatch.score,
-    source: "fuzzy"
+    ambiguous: false,
+    source: "fuzzy",
+    bestCandidate: bestFuzzyMatch.canonical
   };
 }
 

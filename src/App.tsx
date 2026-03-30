@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
-import { normalizeTranscriptToReference } from "./features/parser";
+import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
+import { CANONICAL_BOOK_DICTIONARY } from "./features/parser/spokenBookMatcher";
 import { useSpeechMeter } from "./features/speech/useSpeechMeter";
 
 type HistoryItem = {
@@ -25,6 +26,7 @@ export default function App() {
   const [status, setStatus] = useState("Ready");
   const [isLoading, setIsLoading] = useState(false);
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
+  const [speechDebug, setSpeechDebug] = useState<NormalizedResult | null>(null);
   const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
 
   const verseText = useMemo(() => {
@@ -96,11 +98,14 @@ export default function App() {
     }
 
     const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
+    setSpeechDebug(normalized);
+
     const normalizedValue = normalized.normalizedReference.trim();
     const canAutoSearch =
       normalized.query.kind === "spoken_reference" &&
+      normalized.ambiguity === "clear" &&
       Boolean(normalized.structuredReference) &&
-      normalized.confidence >= 0.7;
+      normalized.confidence >= 0.74;
     const nextReference = canAutoSearch ? normalizedValue || spokenTranscript.trim() : spokenTranscript.trim();
     setReference(nextReference);
 
@@ -197,6 +202,52 @@ export default function App() {
 
           <section className="panel-card">
             <header className="panel-card__header">
+              <h2>Speech Debug</h2>
+              <p>Shows transcript parsing, confidence, and ambiguity before auto-search.</p>
+            </header>
+
+            <div className="panel-card__body">
+              {speechDebug ? (
+                <dl className="debug-grid">
+                  <div>
+                    <dt>Heard transcript</dt>
+                    <dd>{speechDebug.rawTranscript}</dd>
+                  </div>
+                  <div>
+                    <dt>Matched book</dt>
+                    <dd>{speechDebug.canonicalBook ?? "Uncertain"}</dd>
+                  </div>
+                  <div>
+                    <dt>Normalized reference</dt>
+                    <dd>{speechDebug.normalizedReference}</dd>
+                  </div>
+                  <div>
+                    <dt>Confidence</dt>
+                    <dd>{(speechDebug.confidence * 100).toFixed(1)}%</dd>
+                  </div>
+                  <div>
+                    <dt>Ambiguity</dt>
+                    <dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Ambiguous - manual review"}</dd>
+                  </div>
+                  <div>
+                    <dt>Book source</dt>
+                    <dd>{speechDebug.debug.bookMatchSource}</dd>
+                  </div>
+                  {speechDebug.debug.reason ? (
+                    <div>
+                      <dt>Match note</dt>
+                      <dd>{speechDebug.debug.reason}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+              ) : (
+                <p className="history-empty">No speech transcript captured yet.</p>
+              )}
+            </div>
+          </section>
+
+          <section className="panel-card">
+            <header className="panel-card__header">
               <h2>Recent History</h2>
               <p>Newest successful scripture loads appear first.</p>
             </header>
@@ -261,6 +312,16 @@ export default function App() {
                   <dd>{result.found ? "Loaded" : "No Result"}</dd>
                 </div>
               </dl>
+            </div>
+          </section>
+
+          <section className="panel-card">
+            <header className="panel-card__header">
+              <h2>Canonical Book Coverage</h2>
+              <p>Configured spoken-book dictionary for all supported KJV books.</p>
+            </header>
+            <div className="panel-card__body">
+              <p className="coverage-count">{CANONICAL_BOOK_DICTIONARY.length} books configured.</p>
             </div>
           </section>
         </div>
