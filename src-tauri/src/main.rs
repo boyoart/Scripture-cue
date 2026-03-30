@@ -29,6 +29,12 @@ struct SearchResult {
     message: Option<String>,
 }
 
+#[derive(Serialize)]
+struct BookRow {
+    id: i64,
+    name: String,
+}
+
 fn normalize_book_name(book: &str) -> String {
     match book.trim().to_lowercase().as_str() {
         "psalm" | "psalms" => "Psalms".to_string(),
@@ -95,10 +101,7 @@ fn resolve_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
             return Ok(bundled_path);
         }
 
-        let alt_bundled_path = resource_dir
-            .join("resources")
-            .join("bibles")
-            .join("KJV.db");
+        let alt_bundled_path = resource_dir.join("resources").join("bibles").join("KJV.db");
         if alt_bundled_path.exists() {
             println!("using alt bundled db path: {:?}", alt_bundled_path);
             return Ok(alt_bundled_path);
@@ -117,8 +120,8 @@ fn resolve_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<SearchResult, String> {
     println!("incoming reference: {}", reference);
 
-    let parsed =
-        parse_reference(&reference).ok_or_else(|| format!("Invalid reference format: {}", reference))?;
+    let parsed = parse_reference(&reference)
+        .ok_or_else(|| format!("Invalid reference format: {}", reference))?;
 
     println!(
         "parsed => book={}, chapter={}, verse_start={}, verse_end={}",
@@ -167,7 +170,12 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
 
     let verse_iter = stmt
         .query_map(
-            params![book_id, parsed.chapter, parsed.verse_start, parsed.verse_end],
+            params![
+                book_id,
+                parsed.chapter,
+                parsed.verse_start,
+                parsed.verse_end
+            ],
             |row| {
                 let verse: i64 = row.get(0)?;
                 let text: String = row.get(1)?;
@@ -193,7 +201,9 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
             reference: reference.clone(),
             theme: "Scripture Lookup".to_string(),
             verses: vec![],
-            message: Some("No result found in local KJV database. Try another reference.".to_string()),
+            message: Some(
+                "No result found in local KJV database. Try another reference.".to_string(),
+            ),
         });
     }
 
@@ -216,9 +226,63 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
     })
 }
 
+#[tauri::command]
+fn inspect_kjv_books(app: tauri::AppHandle) -> Result<Vec<BookRow>, String> {
+    let db_path = resolve_db_path(&app)?;
+    println!("inspector using db path: {:?}", db_path);
+
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT id, name FROM KJV_books ORDER BY id")
+        .map_err(|e| e.to_string())?;
+
+    let book_iter = stmt
+        .query_map([], |row| {
+            Ok(BookRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    let books: Vec<BookRow> = book_iter
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    println!("========== KJV_books (id, name) ==========");
+    for book in &books {
+        println!("{:>2} | {}", book.id, book.name);
+    }
+
+    let special_terms = [
+        "Samuel",
+        "Kings",
+        "Chronicles",
+        "Corinthians",
+        "Thessalonians",
+        "Timothy",
+        "Peter",
+        "John",
+    ];
+
+    println!("========== KJV_books filtered special names ==========");
+    for term in special_terms {
+        println!("-- contains '{}' --", term);
+        books
+            .iter()
+            .filter(|book| book.name.contains(term))
+            .for_each(|book| println!("{:>2} | {}", book.id, book.name));
+    }
+
+    Ok(books)
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![search_kjv_reference])
+        .invoke_handler(tauri::generate_handler![
+            search_kjv_reference,
+            inspect_kjv_books
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
