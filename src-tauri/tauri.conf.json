@@ -1,9 +1,9 @@
 {
-  "$schema": "./gen/schemas/desktop-schema.json",
+  "$schema": "../gen/schemas/desktop-schema.json",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "devPath": "http://localhost:5173",
+    "devPath": "http://localhost:1420",
     "distDir": "../dist"
   },
   "package": {

@@ -1,186 +1,224 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use rusqlite::{params, Connection, OptionalExtension};
-use serde::{Deserialize, Serialize};
+use rusqlite::{params, Connection};
+use serde::Serialize;
+use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SearchKjvRequest {
+#[derive(Debug)]
+struct ParsedReference {
     book: String,
     chapter: i64,
     verse_start: i64,
     verse_end: i64,
-    translation: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 struct VerseRow {
-    book: String,
-    chapter: i64,
+    reference: String,
     verse: i64,
     text: String,
 }
 
-fn debug_log(message: impl AsRef<str>) {
-    eprintln!("[search_kjv] {}", message.as_ref());
+#[derive(Serialize)]
+struct SearchResult {
+    found: bool,
+    translation: String,
+    reference: String,
+    theme: String,
+    verses: Vec<VerseRow>,
+    message: Option<String>,
 }
 
-fn canonical_book_candidates(book: &str) -> Vec<String> {
-    let trimmed = book.trim();
-    let lower = trimmed.to_lowercase();
-
-    let mut candidates = vec![trimmed.to_string()];
-
-    let direct_mappings = [
-        ("psalm", "Psalms"),
-        ("psalms", "Psalms"),
-        ("first corinthians", "1 Corinthians"),
-        ("second corinthians", "2 Corinthians"),
-        ("first kings", "1 Kings"),
-        ("second kings", "2 Kings"),
-        ("song of songs", "Song of Solomon"),
-        ("canticles", "Song of Solomon"),
-    ];
-
-    for (alias, mapped) in direct_mappings {
-        if lower == alias {
-            candidates.push(mapped.to_string());
-        }
-    }
-
-    let ordinal_numbered = [
-        ("first ", "1 "),
-        ("second ", "2 "),
-        ("third ", "3 "),
-        ("1st ", "1 "),
-        ("2nd ", "2 "),
-        ("3rd ", "3 "),
-        ("one ", "1 "),
-        ("two ", "2 "),
-        ("three ", "3 "),
-    ];
-
-    for (prefix, replacement) in ordinal_numbered {
-        if lower.starts_with(prefix) {
-            let suffix = trimmed[prefix.len()..].trim_start();
-            candidates.push(format!("{replacement}{suffix}"));
-        }
-    }
-
-    candidates.sort();
-    candidates.dedup();
-    candidates
-}
-
-fn resolve_book(conn: &Connection, canonical_book: &str) -> Result<Option<(i64, String)>, String> {
-    let candidates = canonical_book_candidates(canonical_book);
-    debug_log(format!(
-        "backend resolved book name candidates for '{}': {:?}",
-        canonical_book, candidates
-    ));
-
-    for candidate in candidates {
-        let found = conn
-            .query_row(
-                "SELECT id, name FROM KJV_books WHERE lower(name) = lower(?1) LIMIT 1",
-                params![candidate],
-                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-            )
-            .optional()
-            .map_err(|error| format!("Failed to resolve KJV_books row: {error}"))?;
-
-        if let Some((book_id, book_name)) = found {
-            debug_log(format!("backend resolved book name: {book_name}"));
-            debug_log(format!("backend resolved book_id: {book_id}"));
-            return Ok(Some((book_id, book_name)));
-        }
-    }
-
-    debug_log("backend resolved book name: none");
-    debug_log("backend resolved book_id: none");
-    Ok(None)
-}
-
-fn query_kjv_schema(
-    conn: &Connection,
-    book_id: i64,
-    chapter: i64,
-    verse_start: i64,
-    verse_end: i64,
-) -> Result<Vec<VerseRow>, String> {
-    let mut statement = conn
-        .prepare(
-            "SELECT b.name, v.chapter, v.verse, v.text
-             FROM KJV_verses v
-             JOIN KJV_books b ON b.id = v.book_id
-             WHERE v.book_id = ?1 AND v.chapter = ?2 AND v.verse BETWEEN ?3 AND ?4
-             ORDER BY v.verse ASC",
-        )
-        .map_err(|error| format!("Failed to prepare KJV schema query: {error}"))?;
-
-    let rows = statement
-        .query_map(params![book_id, chapter, verse_start, verse_end], |row| {
-            Ok(VerseRow {
-                book: row.get::<_, String>(0)?,
-                chapter: row.get::<_, i64>(1)?,
-                verse: row.get::<_, i64>(2)?,
-                text: row.get::<_, String>(3)?,
+fn normalize_book_name(book: &str) -> String {
+    match book.trim().to_lowercase().as_str() {
+        "psalm" | "psalms" => "Psalms".to_string(),
+        "song of songs" => "Song of Solomon".to_string(),
+        "first corinthians" | "1 corinthians" => "1 Corinthians".to_string(),
+        "second corinthians" | "2 corinthians" => "2 Corinthians".to_string(),
+        "first kings" | "1 kings" => "1 Kings".to_string(),
+        "second kings" | "2 kings" => "2 Kings".to_string(),
+        other => other
+            .split_whitespace()
+            .map(|part| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    None => String::new(),
+                }
             })
-        })
-        .map_err(|error| format!("Failed to query KJV_verses: {error}"))?;
+            .collect::<Vec<_>>()
+            .join(" "),
+    }
+}
 
-    Ok(rows.filter_map(Result::ok).collect())
+fn parse_reference(input: &str) -> Option<ParsedReference> {
+    let trimmed = input.trim();
+    let (book_part, cv_part) = trimmed.rsplit_once(' ')?;
+    let book = normalize_book_name(book_part);
+
+    let (chapter_str, verse_part) = cv_part.split_once(':')?;
+    let chapter = chapter_str.trim().parse::<i64>().ok()?;
+
+    let (verse_start, verse_end) = if let Some((start, end)) = verse_part.split_once('-') {
+        (
+            start.trim().parse::<i64>().ok()?,
+            end.trim().parse::<i64>().ok()?,
+        )
+    } else {
+        let v = verse_part.trim().parse::<i64>().ok()?;
+        (v, v)
+    };
+
+    Some(ParsedReference {
+        book,
+        chapter,
+        verse_start,
+        verse_end,
+    })
+}
+
+fn resolve_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dev_path = PathBuf::from("src-tauri")
+        .join("resources")
+        .join("bibles")
+        .join("KJV.db");
+
+    if dev_path.exists() {
+        println!("using dev db path: {:?}", dev_path);
+        return Ok(dev_path);
+    }
+
+    if let Some(resource_dir) = app.path_resolver().resource_dir() {
+        let bundled_path = resource_dir.join("bibles").join("KJV.db");
+        if bundled_path.exists() {
+            println!("using bundled db path: {:?}", bundled_path);
+            return Ok(bundled_path);
+        }
+
+        let alt_bundled_path = resource_dir
+            .join("resources")
+            .join("bibles")
+            .join("KJV.db");
+        if alt_bundled_path.exists() {
+            println!("using alt bundled db path: {:?}", alt_bundled_path);
+            return Ok(alt_bundled_path);
+        }
+
+        return Err(format!(
+            "KJV.db not found. Checked {:?} and {:?}",
+            bundled_path, alt_bundled_path
+        ));
+    }
+
+    Err("Could not resolve resource directory and dev DB path was not found".to_string())
 }
 
 #[tauri::command]
-fn search_kjv(
-    app_handle: tauri::AppHandle,
-    request: SearchKjvRequest,
-) -> Result<Vec<VerseRow>, String> {
-    debug_log(format!(
-        "backend received payload: book='{}', chapter={}, verse_start={}, verse_end={}, translation='{}'",
-        request.book, request.chapter, request.verse_start, request.verse_end, request.translation
-    ));
+fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<SearchResult, String> {
+    println!("incoming reference: {}", reference);
 
-    if !request.translation.eq_ignore_ascii_case("KJV") {
-        debug_log(format!(
-            "backend rejected unsupported translation: {}",
-            request.translation
-        ));
-        return Ok(Vec::new());
-    }
+    let parsed =
+        parse_reference(&reference).ok_or_else(|| format!("Invalid reference format: {}", reference))?;
 
-    let db_path = app_handle
-        .path_resolver()
-        .resolve_resource("bibles/KJV.db")
-        .ok_or_else(|| "Could not resolve bundled KJV DB resource path".to_string())?;
+    println!(
+        "parsed => book={}, chapter={}, verse_start={}, verse_end={}",
+        parsed.book, parsed.chapter, parsed.verse_start, parsed.verse_end
+    );
 
-    let conn =
-        Connection::open(db_path).map_err(|error| format!("Failed to open KJV.db: {error}"))?;
+    let db_path = resolve_db_path(&app)?;
+    println!("using db path: {:?}", db_path);
 
-    let normalized_start = request.verse_start.max(1);
-    let normalized_end = request.verse_end.max(normalized_start);
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let Some((book_id, _book_name)) = resolve_book(&conn, &request.book)? else {
-        return Ok(Vec::new());
+    let book_row: Option<(i64, String)> = conn
+        .query_row(
+            "SELECT id, name FROM KJV_books WHERE name = ?1 LIMIT 1",
+            params![parsed.book],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .ok();
+
+    let (book_id, book_name) = match book_row {
+        Some(v) => v,
+        None => {
+            return Ok(SearchResult {
+                found: false,
+                translation: "KJV".to_string(),
+                reference: reference.clone(),
+                theme: "Scripture Lookup".to_string(),
+                verses: vec![],
+                message: Some(format!("Book not found in KJV DB: {}", parsed.book)),
+            });
+        }
     };
 
-    let rows = query_kjv_schema(
-        &conn,
-        book_id,
-        request.chapter,
-        normalized_start,
-        normalized_end,
-    )?;
+    println!("matched book => id={}, name={}", book_id, book_name);
 
-    debug_log(format!("sql row count: {}", rows.len()));
+    let mut stmt = conn
+        .prepare(
+            "SELECT verse, text
+             FROM KJV_verses
+             WHERE book_id = ?1
+               AND chapter = ?2
+               AND verse BETWEEN ?3 AND ?4
+             ORDER BY verse ASC",
+        )
+        .map_err(|e| e.to_string())?;
 
-    Ok(rows)
+    let verse_iter = stmt
+        .query_map(
+            params![book_id, parsed.chapter, parsed.verse_start, parsed.verse_end],
+            |row| {
+                let verse: i64 = row.get(0)?;
+                let text: String = row.get(1)?;
+                Ok(VerseRow {
+                    reference: format!("{} {}:{}", book_name, parsed.chapter, verse),
+                    verse,
+                    text,
+                })
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    let verses: Vec<VerseRow> = verse_iter
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+
+    println!("verse row count: {}", verses.len());
+
+    if verses.is_empty() {
+        return Ok(SearchResult {
+            found: false,
+            translation: "KJV".to_string(),
+            reference: reference.clone(),
+            theme: "Scripture Lookup".to_string(),
+            verses: vec![],
+            message: Some("No result found in local KJV database. Try another reference.".to_string()),
+        });
+    }
+
+    let result_reference = if parsed.verse_start == parsed.verse_end {
+        format!("{} {}:{}", book_name, parsed.chapter, parsed.verse_start)
+    } else {
+        format!(
+            "{} {}:{}-{}",
+            book_name, parsed.chapter, parsed.verse_start, parsed.verse_end
+        )
+    };
+
+    Ok(SearchResult {
+        found: true,
+        translation: "KJV".to_string(),
+        reference: result_reference,
+        theme: "Scripture Lookup".to_string(),
+        verses,
+        message: None,
+    })
 }
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![search_kjv])
+        .invoke_handler(tauri::generate_handler![search_kjv_reference])
         .run(tauri::generate_context!())
-        .expect("error while running Scripture Cue application");
+        .expect("error while running tauri application");
 }
