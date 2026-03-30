@@ -4,23 +4,24 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 1420",
     "build": "tsc && vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --port 1420",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@tauri-apps/api": "^1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.6.3",
-    "@types/react": "^18.3.12",
+    "@tauri-apps/cli": "1.5.13",
+    "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.3",
-    "typescript": "^5.6.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.4",
     "vite": "^5.4.10"
   }
 }

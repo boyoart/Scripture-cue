@@ -3,10 +3,12 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  clearScreen: false,
   server: {
-    strictPort: true,
-    port: 1420
+    port: 1420,
+    strictPort: true
   },
-  envPrefix: ["VITE_", "TAURI_"]
+  preview: {
+    port: 1420,
+    strictPort: true
+  }
 });
