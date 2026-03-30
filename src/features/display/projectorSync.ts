@@ -5,10 +5,14 @@ export const PROJECTOR_VIEW_QUERY = "projector";
 export const PROJECTOR_STATE_EVENT = "projector:state-updated";
 const PROJECTOR_STATE_STORAGE_KEY = "scripture-cue:projector-state";
 
+export type ReferencePlacement = "top-left" | "top-center" | "bottom-left";
+
 export type ProjectorPayload = {
   result: SearchResult;
   verseText: string;
   showReference: boolean;
+  referencePlacement: ReferencePlacement;
+  useSafeMargins: boolean;
 };
 
 export function readProjectorState(): ProjectorPayload | null {
