@@ -138,9 +138,17 @@ fn search_kjv(
     request: SearchKjvRequest,
 ) -> Result<Vec<VerseRow>, String> {
     debug_log(format!(
-        "incoming search payload: book='{}', chapter={}, verse_start={}, verse_end={}, translation='{}'",
+        "backend received payload: book='{}', chapter={}, verse_start={}, verse_end={}, translation='{}'",
         request.book, request.chapter, request.verse_start, request.verse_end, request.translation
     ));
+
+    if !request.translation.eq_ignore_ascii_case("KJV") {
+        debug_log(format!(
+            "backend rejected unsupported translation: {}",
+            request.translation
+        ));
+        return Ok(Vec::new());
+    }
 
     let db_path = app_handle
         .path_resolver()
@@ -165,7 +173,7 @@ fn search_kjv(
         normalized_end,
     )?;
 
-    debug_log(format!("backend SQL row count: {}", rows.len()));
+    debug_log(format!("sql row count: {}", rows.len()));
 
     Ok(rows)
 }
