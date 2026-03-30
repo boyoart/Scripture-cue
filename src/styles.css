@@ -298,6 +298,30 @@ select {
   gap: 0.55rem;
 }
 
+.session-log-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.session-log-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+}
+
+.session-log-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
 .history-list__item {
   width: 100%;
   text-align: left;
