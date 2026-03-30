@@ -325,3 +325,30 @@ select {
 .verse-preview--empty {
   color: #98a6d9;
 }
+
+.debug-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.debug-grid dt {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #97a5da;
+}
+
+.debug-grid dd {
+  margin: 0.2rem 0 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #e8edff;
+  overflow-wrap: anywhere;
+}
+
+.coverage-count {
+  margin: 0;
+  color: #b8c4f6;
+}
