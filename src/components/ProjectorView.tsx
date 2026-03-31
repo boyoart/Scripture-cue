@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
 import { getPresentationFontCssFamily } from "../features/display/presentationStyling";
@@ -57,6 +57,19 @@ const EMPTY_STATE: ProjectorViewState = {
   projectionLineHeight: 1.5
 };
 
+function buildBackgroundImageStyle(source: string | null): CSSProperties | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  return {
+    backgroundImage: `url("${source}")`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat"
+  };
+}
+
 export default function ProjectorView() {
   const [state, setState] = useState<ProjectorViewState>(() => {
     const persisted = readProjectorState();
@@ -108,18 +121,7 @@ export default function ProjectorView() {
     return state.customBackgroundSource;
   }, [state.backgroundMode, state.customBackgroundSource]);
 
-  const projectorBackgroundStyle = useMemo(
-    () =>
-      backgroundImageSrc
-        ? {
-            backgroundImage: `url("${backgroundImageSrc}")`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat"
-          }
-        : undefined,
-    [backgroundImageSrc]
-  );
+  const projectorBackgroundStyle = useMemo(() => buildBackgroundImageStyle(backgroundImageSrc), [backgroundImageSrc]);
   const dimOpacity = state.backgroundMode === "custom-image" ? Math.min(state.backgroundDimStrength, 0.8) : 0.35;
 
   useEffect(() => {
@@ -136,6 +138,7 @@ export default function ProjectorView() {
       className="projector-screen"
       aria-live="polite"
       data-background-received={String(Boolean(backgroundImageSrc))}
+      style={projectorBackgroundStyle}
     >
       {backgroundImageSrc ? (
         <div
