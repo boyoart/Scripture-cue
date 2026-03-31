@@ -18,6 +18,8 @@ export function getPresentationFontCssFamily(fontFamily: PresentationFontFamily)
 }
 
 function normalizeLocalFilePath(inputPath: string): string {
+  const sanitizedPath = inputPath.replace(/^\\\\\?\\/, "").replace(/\\/g, "/");
+
   if (inputPath.startsWith("file://")) {
     try {
       const parsed = new URL(inputPath);
@@ -27,11 +29,11 @@ function normalizeLocalFilePath(inputPath: string): string {
       }
       return decoded;
     } catch {
-      return decodeURIComponent(inputPath.replace(/^file:\/\//, ""));
+      return decodeURIComponent(inputPath.replace(/^file:\/\//, "")).replace(/\\/g, "/");
     }
   }
 
-  return inputPath;
+  return sanitizedPath;
 }
 
 export function getBackgroundImageSource(path: string | null): string | null {

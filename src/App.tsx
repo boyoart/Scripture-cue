@@ -48,9 +48,12 @@ type HistoryItem = {
 
 type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "waiting_for_speech" | "error";
 type SessionLogFilter = "all" | "typed" | "spoken";
+type DetectionSignalSource = "final" | "interim";
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
+const AUTO_HIGH_PRIORITY_CONFIDENCE = 0.68;
+const AUTO_FINAL_CONFIDENCE = 0.74;
 
 const EMPTY_RESULT: SearchResult = {
   found: false,
@@ -108,6 +111,8 @@ export default function App() {
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
   const startupRestoreStartedRef = useRef(false);
   const autoListeningSessionRef = useRef(false);
+  const interimCaptureRef = useRef<{ transcript: string; normalizedReference: string; timestampMs: number } | null>(null);
+  const [detectionPulseKey, setDetectionPulseKey] = useState(0);
   const { bars, micState, transcript, errorMessage, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
 
   const verseText = useMemo(() => {
@@ -135,6 +140,10 @@ export default function App() {
   const isVersePreviewUsingCustomImage = hasCustomPresentationBackground;
   const isProjectorUsingCustomImage = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
   const isFullscreenUsingCustomImage = isPresentationMode && backgroundMode === "custom-image" && Boolean(customBackgroundSource);
+
+  const triggerDetectionPulse = useCallback(() => {
+    setDetectionPulseKey((value) => value + 1);
+  }, []);
 
   const projectorPayload: ProjectorPayload = useMemo(
     () => ({
@@ -381,7 +390,7 @@ export default function App() {
         normalized.query.kind === "spoken_reference" &&
         normalized.ambiguity === "clear" &&
         Boolean(normalized.structuredReference) &&
-        normalized.confidence >= 0.74;
+        normalized.confidence >= AUTO_FINAL_CONFIDENCE;
 
       const nextReference = canAutoSearch ? normalizedValue || spokenTranscript.trim() : spokenTranscript.trim();
       setReference(nextReference);
@@ -395,7 +404,7 @@ export default function App() {
 
       if (!canAutoSearch) {
         setListeningState("waiting_for_speech");
-        setSpeechNotice(`Auto mode held: "${spokenTranscript}" (low confidence/ambiguous, review required)`);
+        setSpeechNotice("Auto mode ignored non-reference speech.");
         return;
       }
 
@@ -412,10 +421,66 @@ export default function App() {
       }
 
       lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
+      triggerDetectionPulse();
       setSpeechNotice(`Auto mode presenting: "${spokenTranscript}" → ${nextReference}`);
       await handleSearch(nextReference, "spoken");
     },
-    [handleSearch, listeningMode]
+    [handleSearch, listeningMode, triggerDetectionPulse]
+  );
+
+  const tryAutoCaptureCandidate = useCallback(
+    async (spokenTranscript: string, source: DetectionSignalSource) => {
+      if (listeningMode !== "auto") {
+        return false;
+      }
+
+      const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
+      const hasCandidate =
+        normalized.query.kind === "spoken_reference" &&
+        normalized.ambiguity === "clear" &&
+        Boolean(normalized.structuredReference) &&
+        normalized.confidence >= AUTO_HIGH_PRIORITY_CONFIDENCE;
+
+      if (!hasCandidate) {
+        return false;
+      }
+
+      const nextReference = normalized.normalizedReference.trim();
+      if (!nextReference) {
+        return false;
+      }
+
+      const now = Date.now();
+      const lastAutoSearch = lastAutoSearchRef.current;
+      const duplicateAutoSearch =
+        lastAutoSearch?.normalizedReference === nextReference &&
+        now - lastAutoSearch.timestampMs < AUTO_SEARCH_DUPLICATE_COOLDOWN_MS;
+
+      if (duplicateAutoSearch) {
+        setListeningState("waiting_for_speech");
+        setSpeechNotice(`Auto mode duplicate suppressed: "${nextReference}"`);
+        return true;
+      }
+
+      lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
+      interimCaptureRef.current = { transcript: spokenTranscript, normalizedReference: nextReference, timestampMs: now };
+      setReference(nextReference);
+      triggerDetectionPulse();
+      setSpeechNotice(
+        source === "interim"
+          ? `Auto mode caught quickly: "${nextReference}"`
+          : `Auto mode presenting: "${spokenTranscript}" → ${nextReference}`
+      );
+      setListeningState("processing");
+      await handleSearch(nextReference, "spoken");
+
+      if (source === "interim" && listening) {
+        stopListening("idle");
+      }
+
+      return true;
+    },
+    [handleSearch, listening, listeningMode, stopListening, triggerDetectionPulse]
   );
 
   const exportSessionLog = useCallback(
@@ -560,7 +625,10 @@ export default function App() {
     if (micState !== "success") return;
 
     const processAndContinue = async () => {
-      if (transcript.trim()) {
+      const interimHit = interimCaptureRef.current;
+      if (interimHit && Date.now() - interimHit.timestampMs < 3_500) {
+        interimCaptureRef.current = null;
+      } else if (transcript.trim()) {
         await runSpeechSearch(transcript);
       }
 
@@ -572,6 +640,18 @@ export default function App() {
 
     void processAndContinue();
   }, [micState, runSpeechSearch, startListening, transcript]);
+
+  useEffect(() => {
+    if (listeningMode !== "auto" || !listening || !transcript.trim()) {
+      return;
+    }
+
+    const captureId = window.setTimeout(() => {
+      void tryAutoCaptureCandidate(transcript, "interim");
+    }, 180);
+
+    return () => window.clearTimeout(captureId);
+  }, [listening, listeningMode, transcript, tryAutoCaptureCandidate]);
 
   useEffect(() => {
     if (listeningMode !== "auto" || !autoListeningSessionRef.current || listening) {
@@ -731,6 +811,10 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <div className="service-pill">{status}</div>
+            <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
+              <span className="detection-dot" aria-hidden="true" />
+              Scripture detection
+            </div>
             <div className="service-pill">Listening: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
             <div className="service-pill">Display: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
             {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
