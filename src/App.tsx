@@ -159,6 +159,7 @@ export default function App() {
   const autoListeningSessionRef = useRef(false);
   const interimCaptureRef = useRef<{ transcript: string; normalizedReference: string; timestampMs: number } | null>(null);
   const autoBookAnchorRef = useRef<{ canonicalBook: string; timestampMs: number } | null>(null);
+  const fullscreenViewportRef = useRef<HTMLDivElement | null>(null);
   const fullscreenContentRef = useRef<HTMLDivElement | null>(null);
   const fullscreenVerseRef = useRef<HTMLPreElement | null>(null);
   const [detectionPulseKey, setDetectionPulseKey] = useState(0);
@@ -229,8 +230,13 @@ export default function App() {
     ]
   );
   const presentationState = projectorPayload;
-  const { verseStyle: fullscreenVerseStyle, didHitMinimum: didFullscreenHitAutoFitMinimum } = useAutoFitPresentationText({
-    containerRef: fullscreenContentRef,
+  const {
+    verseStyle: fullscreenVerseStyle,
+    didHitMinimum: didFullscreenHitAutoFitMinimum,
+    shouldTopBias: shouldFullscreenTopBias
+  } = useAutoFitPresentationText({
+    viewportRef: fullscreenViewportRef,
+    contentRef: fullscreenContentRef,
     verseRef: fullscreenVerseRef,
     preferredFontSizePx: presentationState.projectionFontSizePx,
     preferredLineHeight: presentationState.projectionLineHeight,
@@ -1679,9 +1685,6 @@ export default function App() {
             "data-lower-third-output-mode": lowerThirdOutputMode,
             style: { "--lower-third-chroma-key": lowerThirdChromaKeyColor } as CSSProperties
           }}
-          contentProps={{
-            ref: fullscreenContentRef
-          }}
         >
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>
           {didFullscreenHitAutoFitMinimum && presentationState.result.found ? (
@@ -1689,19 +1692,26 @@ export default function App() {
               Passage reached minimum auto-fit size. Consider splitting into multiple slides for maximum readability.
             </p>
           ) : null}
-          {presentationState.showReference ? (
-            <p className={`presentation-mode__reference presentation-mode__reference--${presentationState.referencePlacement}`}>{presentationState.result.reference}</p>
-          ) : null}
-          <pre
-            ref={fullscreenVerseRef}
-            className={`presentation-mode__verse ${presentationState.result.found ? "" : "presentation-mode__verse--empty"}`}
-            style={{
-              fontFamily: getPresentationFontCssFamily(presentationState.projectionFontFamily),
-              ...fullscreenVerseStyle
-            }}
+          <div
+            ref={fullscreenViewportRef}
+            className={`presentation-mode__scripture-viewport ${shouldFullscreenTopBias ? "presentation-mode__scripture-viewport--top-biased" : ""}`}
           >
-            {presentationState.verseText}
-          </pre>
+            <div ref={fullscreenContentRef} className="presentation-mode__scripture-content">
+              {presentationState.showReference ? (
+                <p className={`presentation-mode__reference presentation-mode__reference--${presentationState.referencePlacement}`}>{presentationState.result.reference}</p>
+              ) : null}
+              <pre
+                ref={fullscreenVerseRef}
+                className={`presentation-mode__verse ${presentationState.result.found ? "" : "presentation-mode__verse--empty"}`}
+                style={{
+                  fontFamily: getPresentationFontCssFamily(presentationState.projectionFontFamily),
+                  ...fullscreenVerseStyle
+                }}
+              >
+                {presentationState.verseText}
+              </pre>
+            </div>
+          </div>
         </PresentationSurface>
       ) : null}
     </>

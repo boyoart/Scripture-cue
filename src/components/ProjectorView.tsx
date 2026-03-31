@@ -117,10 +117,12 @@ export default function ProjectorView() {
   const dimOpacity = state.backgroundMode === "custom-image" ? Math.min(state.backgroundDimStrength, 0.8) : 0.35;
   const isTransparentLowerThird = state.displayMode === "lower-third" && state.lowerThirdOutputMode === "transparent";
   const isChromaLowerThird = state.displayMode === "lower-third" && state.lowerThirdOutputMode === "chroma-key";
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const verseRef = useRef<HTMLPreElement | null>(null);
-  const { verseStyle, didHitMinimum } = useAutoFitPresentationText({
-    containerRef: contentRef,
+  const { verseStyle, shouldTopBias } = useAutoFitPresentationText({
+    viewportRef,
+    contentRef,
     verseRef,
     preferredFontSizePx: state.projectionFontSizePx,
     preferredLineHeight: state.projectionLineHeight,
@@ -152,25 +154,29 @@ export default function ProjectorView() {
         "data-lower-third-output-mode": state.lowerThirdOutputMode,
         style: { "--lower-third-chroma-key": state.lowerThirdChromaKeyColor } as CSSProperties
       }}
-      contentProps={{
-        ref: contentRef
-      }}
     >
-      {state.showReference ? (
-        <p className={`projector-screen__reference projector-screen__reference--${state.referencePlacement}`}>
-          {state.result.reference}
-        </p>
-      ) : null}
-      <pre
-        ref={verseRef}
-        className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}
-        style={{
-          fontFamily: getPresentationFontCssFamily(state.projectionFontFamily),
-          ...verseStyle
-        }}
+      <div
+        ref={viewportRef}
+        className={`projector-screen__scripture-viewport ${shouldTopBias ? "projector-screen__scripture-viewport--top-biased" : ""}`}
       >
-        {verseText}
-      </pre>
+        <div ref={contentRef} className="projector-screen__scripture-content">
+          {state.showReference ? (
+            <p className={`projector-screen__reference projector-screen__reference--${state.referencePlacement}`}>
+              {state.result.reference}
+            </p>
+          ) : null}
+          <pre
+            ref={verseRef}
+            className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}
+            style={{
+              fontFamily: getPresentationFontCssFamily(state.projectionFontFamily),
+              ...verseStyle
+            }}
+          >
+            {verseText}
+          </pre>
+        </div>
+      </div>
     </PresentationSurface>
   );
 }
