@@ -14,7 +14,8 @@ function roundToTwo(value: number): number {
 }
 
 export type AutoFitTextOptions = {
-  containerRef: RefObject<HTMLElement | null>;
+  viewportRef: RefObject<HTMLElement | null>;
+  contentRef: RefObject<HTMLElement | null>;
   verseRef: RefObject<HTMLElement | null>;
   preferredFontSizePx: number;
   preferredLineHeight: number;
@@ -25,10 +26,12 @@ export type AutoFitTextOptions = {
 export type AutoFitTextResult = {
   verseStyle: CSSProperties;
   didHitMinimum: boolean;
+  shouldTopBias: boolean;
 };
 
 export function useAutoFitPresentationText({
-  containerRef,
+  viewportRef,
+  contentRef,
   verseRef,
   preferredFontSizePx,
   preferredLineHeight,
@@ -40,36 +43,40 @@ export function useAutoFitPresentationText({
   const [fit, setFit] = useState({
     fontSizePx: preferredFontSizePx,
     lineHeight: preferredLineHeight,
-    didHitMinimum: false
+    didHitMinimum: false,
+    shouldTopBias: false
   });
   const rafRef = useRef<number | null>(null);
 
   const measureAndFit = useMemo(() => {
     return () => {
-      const container = containerRef.current;
+      const container = viewportRef.current;
+      const content = contentRef.current;
       const verse = verseRef.current;
-      if (!container || !verse) {
+      if (!container || !content || !verse) {
         return;
       }
 
       const canFit = () => {
         return (
-          container.scrollHeight <= container.clientHeight + HEIGHT_TOLERANCE_PX
-          && container.scrollWidth <= container.clientWidth + WIDTH_TOLERANCE_PX
+          content.scrollHeight <= container.clientHeight + HEIGHT_TOLERANCE_PX
+          && content.scrollWidth <= container.clientWidth + WIDTH_TOLERANCE_PX
         );
       };
 
       let nextFontSize = preferredFontSizePx;
       let nextLineHeight = preferredLineHeight;
       let didHitMinimum = false;
+      let shouldTopBias = false;
 
       verse.style.fontSize = `${nextFontSize}px`;
       verse.style.lineHeight = `${nextLineHeight}`;
 
       if (!canFit()) {
+        shouldTopBias = true;
         for (let candidate = preferredFontSizePx - 1; candidate >= minimumFontSize; candidate -= 1) {
           const reduction = preferredFontSizePx - candidate;
-          const candidateLineHeight = clamp(preferredLineHeight - reduction * 0.01, minimumLineHeight, preferredLineHeight);
+          const candidateLineHeight = clamp(preferredLineHeight - reduction * 0.0125, minimumLineHeight, preferredLineHeight);
           verse.style.fontSize = `${candidate}px`;
           verse.style.lineHeight = `${candidateLineHeight}`;
 
@@ -91,7 +98,8 @@ export function useAutoFitPresentationText({
       const normalizedFit = {
         fontSizePx: roundToTwo(nextFontSize),
         lineHeight: roundToTwo(nextLineHeight),
-        didHitMinimum
+        didHitMinimum,
+        shouldTopBias
       };
 
       setFit((previous) => {
@@ -99,6 +107,7 @@ export function useAutoFitPresentationText({
           previous.fontSizePx === normalizedFit.fontSizePx
           && previous.lineHeight === normalizedFit.lineHeight
           && previous.didHitMinimum === normalizedFit.didHitMinimum
+          && previous.shouldTopBias === normalizedFit.shouldTopBias
         ) {
           return previous;
         }
@@ -106,15 +115,16 @@ export function useAutoFitPresentationText({
         return normalizedFit;
       });
     };
-  }, [containerRef, displayMode, minimumFontSize, minimumLineHeight, preferredFontSizePx, preferredLineHeight, verseRef]);
+  }, [contentRef, displayMode, minimumFontSize, minimumLineHeight, preferredFontSizePx, preferredLineHeight, verseRef, viewportRef]);
 
   useLayoutEffect(() => {
     measureAndFit();
   }, [measureAndFit, contentKey]);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) {
+    const container = viewportRef.current;
+    const content = contentRef.current;
+    if (!container || !content) {
       return;
     }
 
@@ -131,6 +141,7 @@ export function useAutoFitPresentationText({
 
     const resizeObserver = new ResizeObserver(queueMeasure);
     resizeObserver.observe(container);
+    resizeObserver.observe(content);
 
     window.addEventListener("resize", queueMeasure);
 
@@ -141,13 +152,14 @@ export function useAutoFitPresentationText({
         window.cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [containerRef, measureAndFit]);
+  }, [contentRef, measureAndFit, viewportRef]);
 
   return {
     verseStyle: {
       fontSize: `${fit.fontSizePx}px`,
       lineHeight: fit.lineHeight
     },
-    didHitMinimum: fit.didHitMinimum
+    didHitMinimum: fit.didHitMinimum,
+    shouldTopBias: fit.shouldTopBias
   };
 }

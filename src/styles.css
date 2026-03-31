@@ -317,15 +317,44 @@ input[type="range"] { padding: 0; }
 
 .presentation-mode__content,
 .projector-screen__content {
-  width: min(1600px, 100%); display: flex; flex-direction: column; gap: 1.5rem; overflow: hidden;
+  width: min(1600px, 100%);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  overflow: hidden;
 }
 .presentation-mode__content--safe, .projector-screen__content--safe { padding: clamp(1rem,2.2vh,2.2rem) clamp(1.2rem,3vw,3rem); }
 .presentation-mode__content--fullscreen,
 .projector-screen__content--fullscreen {
-  min-height: 100%;
-  justify-content: center;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+.presentation-mode__scripture-viewport,
+.projector-screen__scripture-viewport {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  display: flex;
   align-items: center;
+  justify-content: center;
+}
+
+.presentation-mode__scripture-viewport--top-biased,
+.projector-screen__scripture-viewport--top-biased {
+  align-items: flex-start;
+}
+
+.presentation-mode__scripture-content,
+.projector-screen__scripture-content {
+  width: min(100%, 36ch);
+  max-width: 100%;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
 }
 
 .presentation-mode__reference, .projector-screen__reference {
@@ -339,15 +368,9 @@ input[type="range"] { padding: 0; }
   margin: 0; font-size: clamp(1.9rem,4.2vw,4rem); line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; text-shadow: 0 4px 14px rgba(0,0,0,.72);
 }
 .presentation-mode__content--fullscreen .presentation-mode__verse,
-.projector-screen__content--fullscreen .projector-screen__verse {
-  width: min(100%, 36ch);
-  text-align: center;
-}
+.projector-screen__content--fullscreen .projector-screen__verse,
 .presentation-mode__content--fullscreen .presentation-mode__reference,
-.projector-screen__content--fullscreen .projector-screen__reference {
-  width: min(100%, 36ch);
-  text-align: center;
-}
+.projector-screen__content--fullscreen .projector-screen__reference { text-align: center; }
 .presentation-mode__verse--empty, .projector-screen__verse--empty { color: #d3dcff; }
 
 .presentation-mode--lower-third,
@@ -366,6 +389,15 @@ input[type="range"] { padding: 0; }
 .presentation-mode__content--lower-third .presentation-mode__verse,
 .projector-screen__content--lower-third .projector-screen__verse {
   font-size: clamp(1.5rem, 2.6vw, 2.8rem);
+}
+.presentation-mode__content--lower-third .presentation-mode__scripture-viewport,
+.projector-screen__content--lower-third .projector-screen__scripture-viewport {
+  align-items: flex-end;
+}
+.presentation-mode__content--lower-third .presentation-mode__scripture-content,
+.projector-screen__content--lower-third .projector-screen__scripture-content {
+  width: 100%;
+  text-align: left;
 }
 .presentation-mode--transparent-lower-third .presentation-surface__background-layer,
 .presentation-mode--transparent-lower-third .presentation-surface__overlay-layer,
