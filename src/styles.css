@@ -277,6 +277,13 @@ input[type="range"] { padding: 0; }
   width: min(1600px, 100%); display: flex; flex-direction: column; gap: 1.5rem;
 }
 .presentation-mode__content--safe, .projector-screen__content--safe { padding: clamp(1rem,2.2vh,2.2rem) clamp(1.2rem,3vw,3rem); }
+.presentation-mode__content--fullscreen,
+.projector-screen__content--fullscreen {
+  min-height: 100%;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
 
 .presentation-mode__reference, .projector-screen__reference {
   margin: 0; font-size: clamp(1rem,1.85vw,1.65rem); color: #e7eeff; letter-spacing: .03em; text-shadow: 0 2px 8px rgba(0,0,0,.6);
@@ -288,6 +295,16 @@ input[type="range"] { padding: 0; }
 .presentation-mode__verse, .projector-screen__verse {
   margin: 0; font-size: clamp(1.9rem,4.2vw,4rem); line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; text-shadow: 0 4px 14px rgba(0,0,0,.72);
 }
+.presentation-mode__content--fullscreen .presentation-mode__verse,
+.projector-screen__content--fullscreen .projector-screen__verse {
+  width: min(100%, 34ch);
+  text-align: center;
+}
+.presentation-mode__content--fullscreen .presentation-mode__reference,
+.projector-screen__content--fullscreen .projector-screen__reference {
+  width: min(100%, 34ch);
+  text-align: center;
+}
 .presentation-mode__verse--empty, .projector-screen__verse--empty { color: #d3dcff; }
 
 .presentation-mode--lower-third,
@@ -298,13 +315,28 @@ input[type="range"] { padding: 0; }
 .projector-screen__content--lower-third {
   margin-top: auto;
   margin-bottom: clamp(1rem, 4vh, 3rem);
-  background: linear-gradient(180deg, rgba(0,0,0,.06), rgba(0,0,0,.46));
+  background: linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.66));
   border-radius: 14px;
-  padding: 1.1rem 1.4rem;
+  padding: 1rem 1.4rem 1.2rem;
+  justify-content: flex-end;
 }
 .presentation-mode__content--lower-third .presentation-mode__verse,
 .projector-screen__content--lower-third .projector-screen__verse {
   font-size: clamp(1.5rem, 2.6vw, 2.8rem);
+}
+.presentation-mode--transparent-lower-third .presentation-surface__background-layer,
+.presentation-mode--transparent-lower-third .presentation-surface__overlay-layer,
+.projector-screen--transparent-lower-third .presentation-surface__background-layer,
+.projector-screen--transparent-lower-third .presentation-surface__overlay-layer {
+  display: none;
+}
+.presentation-mode--transparent-lower-third,
+.projector-screen--transparent-lower-third {
+  background: transparent !important;
+}
+.presentation-mode--chroma-lower-third .presentation-surface__background-layer--solid,
+.projector-screen--chroma-lower-third .presentation-surface__background-layer--solid {
+  background: var(--lower-third-chroma-key, #00ff00);
 }
 
 .presentation-exit-button {

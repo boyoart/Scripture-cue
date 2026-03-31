@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/api/dialog";
@@ -16,6 +16,7 @@ import {
   getProjectorRouteUrl,
   writeProjectorState,
   type DisplayMode,
+  type LowerThirdOutputMode,
   type ListeningMode,
   type PresentationBackgroundMode,
   type ProjectorPayload,
@@ -58,6 +59,8 @@ const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
 const AUTO_MEDIUM_CONFIDENCE = 0.68;
 const AUTO_HIGH_PRIORITY_CONFIDENCE = 0.78;
 const AUTO_FINAL_CONFIDENCE = 0.82;
+const AUTO_BOOK_ANCHOR_CONFIDENCE = 0.42;
+const AUTO_BOOK_CANDIDATE_HOLD_MS = 2200;
 
 const EMPTY_RESULT: SearchResult = {
   found: false,
@@ -116,6 +119,8 @@ export default function App() {
   const [projectionFontFamily, setProjectionFontFamily] = useState(initialSettings.projectionFontFamily);
   const [projectionFontSizePx, setProjectionFontSizePx] = useState(initialSettings.projectionFontSizePx);
   const [projectionLineHeight, setProjectionLineHeight] = useState(initialSettings.projectionLineHeight);
+  const [lowerThirdOutputMode, setLowerThirdOutputMode] = useState<LowerThirdOutputMode>(initialSettings.lowerThirdOutputMode);
+  const [lowerThirdChromaKeyColor, setLowerThirdChromaKeyColor] = useState(initialSettings.lowerThirdChromaKeyColor);
   const [activeDialog, setActiveDialog] = useState<OperatorDialog>(null);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
@@ -123,6 +128,7 @@ export default function App() {
   const startupRestoreStartedRef = useRef(false);
   const autoListeningSessionRef = useRef(false);
   const interimCaptureRef = useRef<{ transcript: string; normalizedReference: string; timestampMs: number } | null>(null);
+  const autoBookAnchorRef = useRef<{ canonicalBook: string; timestampMs: number } | null>(null);
   const [detectionPulseKey, setDetectionPulseKey] = useState(0);
   const { bars, micState, transcript, errorMessage, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
 
@@ -137,6 +143,8 @@ export default function App() {
   const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
   const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const fullscreenDimOpacity = backgroundMode === "custom-image" ? Math.min(backgroundDimStrength, 0.8) : 0.35;
+  const isTransparentLowerThird = displayMode === "lower-third" && lowerThirdOutputMode === "transparent";
+  const isChromaLowerThird = displayMode === "lower-third" && lowerThirdOutputMode === "chroma-key";
   const isVersePreviewUsingCustomImage = hasCustomPresentationBackground;
   const isProjectorUsingCustomImage = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
   const isFullscreenUsingCustomImage = isPresentationMode && backgroundMode === "custom-image" && Boolean(customBackgroundSource);
@@ -162,7 +170,9 @@ export default function App() {
       previewFontSizePx,
       projectionFontFamily,
       projectionFontSizePx,
-      projectionLineHeight
+      projectionLineHeight,
+      lowerThirdOutputMode,
+      lowerThirdChromaKeyColor
     }),
     [
       result,
@@ -180,7 +190,9 @@ export default function App() {
       previewFontSizePx,
       projectionFontFamily,
       projectionFontSizePx,
-      projectionLineHeight
+      projectionLineHeight,
+      lowerThirdOutputMode,
+      lowerThirdChromaKeyColor
     ]
   );
   const presentationState = projectorPayload;
@@ -275,6 +287,8 @@ export default function App() {
         projectionFontFamily,
         projectionFontSizePx,
         projectionLineHeight,
+        lowerThirdOutputMode,
+        lowerThirdChromaKeyColor,
         result
       })
     );
@@ -298,6 +312,8 @@ export default function App() {
     projectionFontFamily,
     projectionFontSizePx,
     projectionLineHeight,
+    lowerThirdOutputMode,
+    lowerThirdChromaKeyColor,
     result
   ]);
 
@@ -430,16 +446,28 @@ export default function App() {
       setSpeechDebug(normalized);
 
       const normalizedValue = normalized.normalizedReference.trim();
+      const hasBookAnchor = Boolean(normalized.canonicalBook) && normalized.confidence >= AUTO_BOOK_ANCHOR_CONFIDENCE;
+      if (hasBookAnchor && normalized.canonicalBook) {
+        autoBookAnchorRef.current = { canonicalBook: normalized.canonicalBook, timestampMs: Date.now() };
+      }
+      const recentBookAnchor = autoBookAnchorRef.current;
+      const hasRecentMatchingBookAnchor =
+        Boolean(
+          recentBookAnchor &&
+            normalized.canonicalBook &&
+            recentBookAnchor.canonicalBook === normalized.canonicalBook &&
+            Date.now() - recentBookAnchor.timestampMs <= AUTO_BOOK_CANDIDATE_HOLD_MS
+        );
       const hasStrongCandidate =
         normalized.query.kind === "spoken_reference" &&
         normalized.ambiguity === "clear" &&
         Boolean(normalized.structuredReference) &&
-        normalized.confidence >= AUTO_FINAL_CONFIDENCE;
+        normalized.confidence >= (hasRecentMatchingBookAnchor ? 0.76 : AUTO_FINAL_CONFIDENCE);
       const hasMediumCandidate =
         normalized.query.kind === "spoken_reference" &&
         normalized.ambiguity === "clear" &&
         Boolean(normalized.structuredReference) &&
-        normalized.confidence >= AUTO_MEDIUM_CONFIDENCE;
+        normalized.confidence >= (hasRecentMatchingBookAnchor ? 0.62 : AUTO_MEDIUM_CONFIDENCE);
 
       const nextReference = normalizedValue || spokenTranscript.trim();
 
@@ -459,7 +487,11 @@ export default function App() {
           return;
         }
         setListeningState("waiting_for_speech");
-        setSpeechNotice("Auto mode ignored non-reference speech.");
+        if (hasBookAnchor && normalized.canonicalBook) {
+          setSpeechNotice(`Auto mode heard "${normalized.canonicalBook}" and is waiting for chapter/verse.`);
+        } else {
+          setSpeechNotice("Auto mode ignored non-reference speech.");
+        }
         return;
       }
 
@@ -490,11 +522,23 @@ export default function App() {
       }
 
       const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
+      const hasBookAnchor = Boolean(normalized.canonicalBook) && normalized.confidence >= AUTO_BOOK_ANCHOR_CONFIDENCE;
+      if (hasBookAnchor && normalized.canonicalBook) {
+        autoBookAnchorRef.current = { canonicalBook: normalized.canonicalBook, timestampMs: Date.now() };
+      }
+      const recentBookAnchor = autoBookAnchorRef.current;
+      const hasRecentMatchingBookAnchor =
+        Boolean(
+          recentBookAnchor &&
+            normalized.canonicalBook &&
+            recentBookAnchor.canonicalBook === normalized.canonicalBook &&
+            Date.now() - recentBookAnchor.timestampMs <= AUTO_BOOK_CANDIDATE_HOLD_MS
+        );
       const hasCandidate =
         normalized.query.kind === "spoken_reference" &&
         normalized.ambiguity === "clear" &&
         Boolean(normalized.structuredReference) &&
-        normalized.confidence >= AUTO_HIGH_PRIORITY_CONFIDENCE;
+        normalized.confidence >= (hasRecentMatchingBookAnchor ? 0.7 : AUTO_HIGH_PRIORITY_CONFIDENCE);
 
       if (!hasCandidate) {
         return false;
@@ -781,7 +825,8 @@ export default function App() {
         height: 900,
         resizable: true,
         fullscreen: false,
-        decorations: true,
+        decorations: !(displayMode === "lower-third" && lowerThirdOutputMode === "transparent"),
+        transparent: displayMode === "lower-third" && lowerThirdOutputMode === "transparent",
         center: true
       });
 
@@ -813,7 +858,7 @@ export default function App() {
       const msg = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
       setStatus(`Projector failed to open: ${msg}`);
     }
-  }, [projectorPayload]);
+  }, [displayMode, lowerThirdOutputMode, projectorPayload]);
 
   const handleCloseProjectorView = useCallback(async () => {
     const target = projectorWindowRef.current ?? WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
@@ -1120,6 +1165,31 @@ export default function App() {
                           <option value="lower-third">Lower Third</option>
                         </select>
                       </div>
+                      {displayMode === "lower-third" ? (
+                        <>
+                          <div className="translation-row">
+                            <label className="field-label" htmlFor="lower-third-output-mode-select">Lower Third output</label>
+                            <select
+                              id="lower-third-output-mode-select"
+                              value={lowerThirdOutputMode}
+                              onChange={(e) => setLowerThirdOutputMode(e.target.value as LowerThirdOutputMode)}
+                            >
+                              <option value="transparent">Transparent (OBS preferred)</option>
+                              <option value="chroma-key">Chroma Key fallback</option>
+                            </select>
+                          </div>
+                          <div className="translation-row">
+                            <label className="field-label" htmlFor="lower-third-chroma-input">Chroma key color</label>
+                            <input
+                              id="lower-third-chroma-input"
+                              type="color"
+                              value={lowerThirdChromaKeyColor}
+                              disabled={lowerThirdOutputMode !== "chroma-key"}
+                              onChange={(e) => setLowerThirdChromaKeyColor(e.target.value)}
+                            />
+                          </div>
+                        </>
+                      ) : null}
                       <label className="inline-check">
                         <input type="checkbox" checked={showPresentationReference} onChange={(e) => setShowPresentationReference(e.target.checked)} />
                         Show reference in presenter view
@@ -1286,13 +1356,17 @@ export default function App() {
       {isPresentationMode ? (
         <PresentationSurface
           as="section"
-          className={`presentation-mode presentation-mode--${displayMode}`}
+          className={`presentation-mode presentation-mode--${displayMode} ${isTransparentLowerThird ? "presentation-mode--transparent-lower-third" : ""} ${isChromaLowerThird ? "presentation-mode--chroma-lower-third" : ""}`}
           contentClassName={`presentation-mode__content presentation-mode__content--${presentationState.displayMode} ${presentationState.useSafeMargins ? "presentation-mode__content--safe" : ""}`}
           backgroundMode={presentationState.backgroundMode}
           backgroundSource={presentationState.customBackgroundSource}
           blurBackgroundImage={presentationState.blurBackgroundImage}
-          dimOpacity={fullscreenDimOpacity}
-          containerProps={{ "aria-live": "polite" }}
+          dimOpacity={isTransparentLowerThird ? 0 : fullscreenDimOpacity}
+          containerProps={{
+            "aria-live": "polite",
+            "data-lower-third-output-mode": lowerThirdOutputMode,
+            style: { "--lower-third-chroma-key": lowerThirdChromaKeyColor } as CSSProperties
+          }}
         >
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>
           {presentationState.showReference ? (

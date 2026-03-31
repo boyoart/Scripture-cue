@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
 import { getPresentationFontCssFamily } from "../features/display/presentationStyling";
@@ -28,6 +28,8 @@ type ProjectorViewState = {
   projectionFontFamily: ProjectorPayload["projectionFontFamily"];
   projectionFontSizePx: number;
   projectionLineHeight: number;
+  lowerThirdOutputMode: ProjectorPayload["lowerThirdOutputMode"];
+  lowerThirdChromaKeyColor: string;
 };
 
 const EMPTY_RESULT: SearchResult = {
@@ -55,7 +57,9 @@ const EMPTY_STATE: ProjectorViewState = {
   previewFontSizePx: 21,
   projectionFontFamily: "Inter",
   projectionFontSizePx: 64,
-  projectionLineHeight: 1.5
+  projectionLineHeight: 1.5,
+  lowerThirdOutputMode: "transparent",
+  lowerThirdChromaKeyColor: "#00ff00"
 };
 
 export default function ProjectorView() {
@@ -110,6 +114,8 @@ export default function ProjectorView() {
   }, [state.backgroundMode, state.customBackgroundSource]);
 
   const dimOpacity = state.backgroundMode === "custom-image" ? Math.min(state.backgroundDimStrength, 0.8) : 0.35;
+  const isTransparentLowerThird = state.displayMode === "lower-third" && state.lowerThirdOutputMode === "transparent";
+  const isChromaLowerThird = state.displayMode === "lower-third" && state.lowerThirdOutputMode === "chroma-key";
 
   useEffect(() => {
     console.info("[presentation-background] projector received state", {
@@ -123,15 +129,17 @@ export default function ProjectorView() {
   return (
     <PresentationSurface
       as="main"
-      className="projector-screen"
+      className={`projector-screen ${isTransparentLowerThird ? "projector-screen--transparent-lower-third" : ""} ${isChromaLowerThird ? "projector-screen--chroma-lower-third" : ""}`}
       contentClassName={`projector-screen__content projector-screen__content--${state.displayMode} ${state.useSafeMargins ? "projector-screen__content--safe" : ""}`}
       backgroundMode={state.backgroundMode}
       backgroundSource={backgroundImageSrc}
       blurBackgroundImage={state.blurBackgroundImage}
-      dimOpacity={dimOpacity}
+      dimOpacity={isTransparentLowerThird ? 0 : dimOpacity}
       containerProps={{
         "aria-live": "polite",
-        "data-background-received": String(Boolean(backgroundImageSrc))
+        "data-background-received": String(Boolean(backgroundImageSrc)),
+        "data-lower-third-output-mode": state.lowerThirdOutputMode,
+        style: { "--lower-third-chroma-key": state.lowerThirdChromaKeyColor } as CSSProperties
       }}
     >
       {state.showReference ? (
