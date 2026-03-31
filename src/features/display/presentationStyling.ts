@@ -31,10 +31,20 @@ export function getBackgroundImageSource(path: string | null): string | null {
     return trimmed;
   }
 
-  if (trimmed.startsWith("file://")) {
-    const decoded = decodeURIComponent(trimmed.replace(/^file:\/\//, ""));
-    return convertFileSrc(decoded);
-  }
+  const toTauriFileSource = (value: string) => {
+    const normalized = value.replace(/\\/g, "/");
+    return convertFileSrc(normalized);
+  };
 
-  return convertFileSrc(trimmed);
+  try {
+    if (trimmed.startsWith("file://")) {
+      const decoded = decodeURIComponent(trimmed.replace(/^file:\/\//, ""));
+      return toTauriFileSource(decoded);
+    }
+
+    return toTauriFileSource(trimmed);
+  } catch (error) {
+    console.warn("[presentation] failed to convert background image path", error);
+    return null;
+  }
 }
