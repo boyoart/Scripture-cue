@@ -9,6 +9,7 @@ export type ReferencePlacement = "top-left" | "top-center" | "bottom-left";
 export type ListeningMode = "manual" | "auto";
 export type DisplayMode = "fullscreen" | "lower-third";
 export type PresentationBackgroundMode = "solid-dark" | "custom-image";
+export type LowerThirdOutputMode = "transparent" | "chroma-key";
 export type PresentationFontFamily =
   | "Inter"
   | "Georgia"
@@ -36,6 +37,8 @@ export type ProjectorPayload = {
   projectionFontFamily: PresentationFontFamily;
   projectionFontSizePx: number;
   projectionLineHeight: number;
+  lowerThirdOutputMode: LowerThirdOutputMode;
+  lowerThirdChromaKeyColor: string;
 };
 
 export function readProjectorState(): ProjectorPayload | null {

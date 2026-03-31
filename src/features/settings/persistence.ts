@@ -1,6 +1,7 @@
 import type { SearchResult } from "../../api";
 import type {
   DisplayMode,
+  LowerThirdOutputMode,
   ListeningMode,
   PresentationFontFamily,
   PresentationBackgroundMode,
@@ -32,6 +33,8 @@ export type PersistedAppSettings = {
   projectionFontFamily: PresentationFontFamily;
   projectionFontSizePx: number;
   projectionLineHeight: number;
+  lowerThirdOutputMode: LowerThirdOutputMode;
+  lowerThirdChromaKeyColor: string;
 };
 
 const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
@@ -54,7 +57,9 @@ const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
   previewFontSizePx: 21,
   projectionFontFamily: "Inter",
   projectionFontSizePx: 64,
-  projectionLineHeight: 1.5
+  projectionLineHeight: 1.5,
+  lowerThirdOutputMode: "transparent",
+  lowerThirdChromaKeyColor: "#00ff00"
 };
 
 function isReferencePlacement(value: unknown): value is ReferencePlacement {
@@ -71,6 +76,9 @@ function isDisplayMode(value: unknown): value is DisplayMode {
 
 function isBackgroundMode(value: unknown): value is PresentationBackgroundMode {
   return value === "solid-dark" || value === "custom-image";
+}
+function isLowerThirdOutputMode(value: unknown): value is LowerThirdOutputMode {
+  return value === "transparent" || value === "chroma-key";
 }
 
 function isSoftwareTheme(value: unknown): value is SoftwareTheme {
@@ -158,7 +166,11 @@ export function readAppSettings(): PersistedAppSettings {
         ? parsed.projectionFontFamily
         : DEFAULT_APP_SETTINGS.projectionFontFamily,
       projectionFontSizePx: asNumberInRange(parsed.projectionFontSizePx, DEFAULT_APP_SETTINGS.projectionFontSizePx, 30, 120),
-      projectionLineHeight: asNumberInRange(parsed.projectionLineHeight, DEFAULT_APP_SETTINGS.projectionLineHeight, 1.1, 2.2)
+      projectionLineHeight: asNumberInRange(parsed.projectionLineHeight, DEFAULT_APP_SETTINGS.projectionLineHeight, 1.1, 2.2),
+      lowerThirdOutputMode: isLowerThirdOutputMode(parsed.lowerThirdOutputMode)
+        ? parsed.lowerThirdOutputMode
+        : DEFAULT_APP_SETTINGS.lowerThirdOutputMode,
+      lowerThirdChromaKeyColor: asString(parsed.lowerThirdChromaKeyColor, DEFAULT_APP_SETTINGS.lowerThirdChromaKeyColor)
     };
   } catch {
     return getDefaultAppSettings();
@@ -189,6 +201,8 @@ export function settingsFromSnapshot(input: {
   projectionFontFamily: PresentationFontFamily;
   projectionFontSizePx: number;
   projectionLineHeight: number;
+  lowerThirdOutputMode: LowerThirdOutputMode;
+  lowerThirdChromaKeyColor: string;
   result: SearchResult;
 }): PersistedAppSettings {
   return {
@@ -211,6 +225,8 @@ export function settingsFromSnapshot(input: {
     previewFontSizePx: input.previewFontSizePx,
     projectionFontFamily: input.projectionFontFamily,
     projectionFontSizePx: input.projectionFontSizePx,
-    projectionLineHeight: input.projectionLineHeight
+    projectionLineHeight: input.projectionLineHeight,
+    lowerThirdOutputMode: input.lowerThirdOutputMode,
+    lowerThirdChromaKeyColor: input.lowerThirdChromaKeyColor
   };
 }
