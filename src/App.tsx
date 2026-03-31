@@ -4,7 +4,6 @@ import { WebviewWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/api/dialog";
 import { writeTextFile } from "@tauri-apps/api/fs";
 import { writeText } from "@tauri-apps/api/clipboard";
-import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
@@ -21,6 +20,11 @@ import {
   type ProjectorPayload,
   type ReferencePlacement
 } from "./features/display/projectorSync";
+import {
+  getBackgroundImageSource,
+  getPresentationFontCssFamily,
+  PRESENTATION_FONT_OPTIONS
+} from "./features/display/presentationStyling";
 import {
   readAppSettings,
   settingsFromSnapshot,
@@ -94,10 +98,16 @@ export default function App() {
   const [customBackgroundPath, setCustomBackgroundPath] = useState<string | null>(initialSettings.customBackgroundPath);
   const [backgroundDimStrength, setBackgroundDimStrength] = useState(initialSettings.backgroundDimStrength);
   const [blurBackgroundImage, setBlurBackgroundImage] = useState(initialSettings.blurBackgroundImage);
+  const [previewFontFamily, setPreviewFontFamily] = useState(initialSettings.previewFontFamily);
+  const [previewFontSizePx, setPreviewFontSizePx] = useState(initialSettings.previewFontSizePx);
+  const [projectionFontFamily, setProjectionFontFamily] = useState(initialSettings.projectionFontFamily);
+  const [projectionFontSizePx, setProjectionFontSizePx] = useState(initialSettings.projectionFontSizePx);
+  const [projectionLineHeight, setProjectionLineHeight] = useState(initialSettings.projectionLineHeight);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
   const startupRestoreStartedRef = useRef(false);
+  const autoListeningSessionRef = useRef(false);
   const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
 
   const verseText = useMemo(() => {
@@ -108,10 +118,7 @@ export default function App() {
     return result.verses.map((v) => `${v.verse}. ${v.text}`).join("\n");
   }, [result]);
 
-  const customBackgroundSource = useMemo(
-    () => (customBackgroundPath ? convertFileSrc(customBackgroundPath) : null),
-    [customBackgroundPath]
-  );
+  const customBackgroundSource = useMemo(() => getBackgroundImageSource(customBackgroundPath), [customBackgroundPath]);
 
   const projectorPayload: ProjectorPayload = useMemo(
     () => ({
@@ -125,7 +132,12 @@ export default function App() {
       customBackgroundPath,
       customBackgroundSource,
       backgroundDimStrength,
-      blurBackgroundImage
+      blurBackgroundImage,
+      previewFontFamily,
+      previewFontSizePx,
+      projectionFontFamily,
+      projectionFontSizePx,
+      projectionLineHeight
     }),
     [
       result,
@@ -138,7 +150,12 @@ export default function App() {
       customBackgroundPath,
       customBackgroundSource,
       backgroundDimStrength,
-      blurBackgroundImage
+      blurBackgroundImage,
+      previewFontFamily,
+      previewFontSizePx,
+      projectionFontFamily,
+      projectionFontSizePx,
+      projectionLineHeight
     ]
   );
 
@@ -173,6 +190,11 @@ export default function App() {
         customBackgroundPath,
         backgroundDimStrength,
         blurBackgroundImage,
+        previewFontFamily,
+        previewFontSizePx,
+        projectionFontFamily,
+        projectionFontSizePx,
+        projectionLineHeight,
         result
       })
     );
@@ -191,6 +213,11 @@ export default function App() {
     customBackgroundPath,
     backgroundDimStrength,
     blurBackgroundImage,
+    previewFontFamily,
+    previewFontSizePx,
+    projectionFontFamily,
+    projectionFontSizePx,
+    projectionLineHeight,
     result
   ]);
 
@@ -292,10 +319,12 @@ export default function App() {
   async function handleStartListening() {
     setSpeechNotice(null);
     setListeningState("listening");
+    autoListeningSessionRef.current = listeningMode === "auto";
     await startListening();
   }
 
   function handleStopListening() {
+    autoListeningSessionRef.current = false;
     stopListening("idle");
     setListeningState("idle");
     setStatus("Listening stopped");
@@ -319,6 +348,7 @@ export default function App() {
       setReference(nextReference);
 
       if (listeningMode === "manual") {
+        autoListeningSessionRef.current = false;
         setListeningState("idle");
         setSpeechNotice(`Manual mode captured: "${spokenTranscript}" (confirm search before presenting)`);
         return;
@@ -423,7 +453,7 @@ export default function App() {
     try {
       const selected = await open({
         multiple: false,
-        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }]
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }]
       });
 
       if (!selected || Array.isArray(selected)) {
@@ -434,6 +464,7 @@ export default function App() {
       setCustomBackgroundPath(selected);
       setBackgroundMode("custom-image");
       setStatus("Custom presentation background selected");
+      setSessionNotice(`Custom background selected: ${selected}`);
     } catch (error) {
       const details = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
       setSessionNotice(`Background selection failed: ${details}`);
@@ -487,9 +518,29 @@ export default function App() {
   }, [listeningState, micState]);
 
   useEffect(() => {
-    if (micState !== "success" || !transcript.trim()) return;
-    void runSpeechSearch(transcript);
-  }, [micState, runSpeechSearch, transcript]);
+    if (micState !== "success") return;
+
+    const processAndContinue = async () => {
+      if (transcript.trim()) {
+        await runSpeechSearch(transcript);
+      }
+
+      if (autoListeningSessionRef.current) {
+        setListeningState("listening");
+        await startListening();
+      }
+    };
+
+    void processAndContinue();
+  }, [micState, runSpeechSearch, startListening, transcript]);
+
+  useEffect(() => {
+    if (listeningMode !== "auto") {
+      autoListeningSessionRef.current = false;
+    } else if (listening) {
+      autoListeningSessionRef.current = true;
+    }
+  }, [listening, listeningMode]);
 
   const listeningStateLabel = useMemo(() => {
     switch (listeningState) {
@@ -806,6 +857,75 @@ export default function App() {
 
             <section className="panel-card">
               <header className="panel-card__header">
+                <h2>Font Controls</h2>
+                <p>Separate typography controls for operator preview and projector/fullscreen output.</p>
+              </header>
+              <div className="panel-card__body search-controls">
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="preview-font-family-select">Preview font family</label>
+                  <select
+                    id="preview-font-family-select"
+                    value={previewFontFamily}
+                    onChange={(e) => setPreviewFontFamily(e.target.value as typeof previewFontFamily)}
+                  >
+                    {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                      <option key={`preview-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="preview-font-size-input">Preview font size ({previewFontSizePx}px)</label>
+                  <input
+                    id="preview-font-size-input"
+                    type="range"
+                    min={14}
+                    max={56}
+                    step={1}
+                    value={previewFontSizePx}
+                    onChange={(e) => setPreviewFontSizePx(Number(e.target.value))}
+                  />
+                </div>
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="projection-font-family-select">Projection font family</label>
+                  <select
+                    id="projection-font-family-select"
+                    value={projectionFontFamily}
+                    onChange={(e) => setProjectionFontFamily(e.target.value as typeof projectionFontFamily)}
+                  >
+                    {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                      <option key={`projector-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="projection-font-size-input">Projection font size ({projectionFontSizePx}px)</label>
+                  <input
+                    id="projection-font-size-input"
+                    type="range"
+                    min={30}
+                    max={120}
+                    step={1}
+                    value={projectionFontSizePx}
+                    onChange={(e) => setProjectionFontSizePx(Number(e.target.value))}
+                  />
+                </div>
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="projection-line-height-input">Projection line height ({projectionLineHeight.toFixed(2)})</label>
+                  <input
+                    id="projection-line-height-input"
+                    type="range"
+                    min={1.1}
+                    max={2.2}
+                    step={0.05}
+                    value={projectionLineHeight}
+                    onChange={(e) => setProjectionLineHeight(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header">
                 <h2>Software Theme</h2>
                 <p>Operator UI theme presets. These never change projector scripture backgrounds.</p>
               </header>
@@ -922,7 +1042,14 @@ export default function App() {
           <div className="workspace-column">
             <section className="panel-card preview-card">
               <header className="panel-card__header"><h2>Verse Preview</h2><p>Large-format text for confidence monitor and projection checks.</p></header>
-              <div className="panel-card__body"><pre className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}>{verseText}</pre></div>
+              <div className="panel-card__body">
+                <pre
+                  className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}
+                  style={{ fontFamily: getPresentationFontCssFamily(previewFontFamily), fontSize: `${previewFontSizePx}px` }}
+                >
+                  {verseText}
+                </pre>
+              </div>
             </section>
 
             <section className="panel-card">
@@ -964,7 +1091,16 @@ export default function App() {
             {showPresentationReference ? (
               <p className={`presentation-mode__reference presentation-mode__reference--${referencePlacement}`}>{result.reference}</p>
             ) : null}
-            <pre className={`presentation-mode__verse ${result.found ? "" : "presentation-mode__verse--empty"}`}>{verseText}</pre>
+            <pre
+              className={`presentation-mode__verse ${result.found ? "" : "presentation-mode__verse--empty"}`}
+              style={{
+                fontFamily: getPresentationFontCssFamily(projectionFontFamily),
+                fontSize: `${projectionFontSizePx}px`,
+                lineHeight: projectionLineHeight
+              }}
+            >
+              {verseText}
+            </pre>
           </div>
         </section>
       ) : null}

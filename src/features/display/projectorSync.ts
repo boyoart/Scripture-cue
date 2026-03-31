@@ -9,6 +9,15 @@ export type ReferencePlacement = "top-left" | "top-center" | "bottom-left";
 export type ListeningMode = "manual" | "auto";
 export type DisplayMode = "fullscreen" | "lower-third";
 export type PresentationBackgroundMode = "solid-dark" | "custom-image";
+export type PresentationFontFamily =
+  | "Inter"
+  | "Georgia"
+  | "Merriweather"
+  | "Montserrat"
+  | "Open Sans"
+  | "Lora"
+  | "Playfair Display"
+  | "Roboto";
 
 export type ProjectorPayload = {
   result: SearchResult;
@@ -22,6 +31,11 @@ export type ProjectorPayload = {
   customBackgroundSource: string | null;
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
+  previewFontFamily: PresentationFontFamily;
+  previewFontSizePx: number;
+  projectionFontFamily: PresentationFontFamily;
+  projectionFontSizePx: number;
+  projectionLineHeight: number;
 };
 
 export function readProjectorState(): ProjectorPayload | null {

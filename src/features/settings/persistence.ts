@@ -2,6 +2,7 @@ import type { SearchResult } from "../../api";
 import type {
   DisplayMode,
   ListeningMode,
+  PresentationFontFamily,
   PresentationBackgroundMode,
   ReferencePlacement
 } from "../display/projectorSync";
@@ -26,6 +27,11 @@ export type PersistedAppSettings = {
   customBackgroundPath: string | null;
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
+  previewFontFamily: PresentationFontFamily;
+  previewFontSizePx: number;
+  projectionFontFamily: PresentationFontFamily;
+  projectionFontSizePx: number;
+  projectionLineHeight: number;
 };
 
 const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
@@ -43,7 +49,12 @@ const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
   backgroundMode: "solid-dark",
   customBackgroundPath: null,
   backgroundDimStrength: 0.5,
-  blurBackgroundImage: false
+  blurBackgroundImage: false,
+  previewFontFamily: "Inter",
+  previewFontSizePx: 21,
+  projectionFontFamily: "Inter",
+  projectionFontSizePx: 64,
+  projectionLineHeight: 1.5
 };
 
 function isReferencePlacement(value: unknown): value is ReferencePlacement {
@@ -69,6 +80,19 @@ function isSoftwareTheme(value: unknown): value is SoftwareTheme {
     value === "royal-blue" ||
     value === "warm-church" ||
     value === "high-contrast"
+  );
+}
+
+function isPresentationFontFamily(value: unknown): value is PresentationFontFamily {
+  return (
+    value === "Inter" ||
+    value === "Georgia" ||
+    value === "Merriweather" ||
+    value === "Montserrat" ||
+    value === "Open Sans" ||
+    value === "Lora" ||
+    value === "Playfair Display" ||
+    value === "Roboto"
   );
 }
 
@@ -125,7 +149,16 @@ export function readAppSettings(): PersistedAppSettings {
       backgroundMode: isBackgroundMode(parsed.backgroundMode) ? parsed.backgroundMode : DEFAULT_APP_SETTINGS.backgroundMode,
       customBackgroundPath: asNullableString(parsed.customBackgroundPath),
       backgroundDimStrength: asNumberInRange(parsed.backgroundDimStrength, DEFAULT_APP_SETTINGS.backgroundDimStrength, 0, 0.9),
-      blurBackgroundImage: asBoolean(parsed.blurBackgroundImage, DEFAULT_APP_SETTINGS.blurBackgroundImage)
+      blurBackgroundImage: asBoolean(parsed.blurBackgroundImage, DEFAULT_APP_SETTINGS.blurBackgroundImage),
+      previewFontFamily: isPresentationFontFamily(parsed.previewFontFamily)
+        ? parsed.previewFontFamily
+        : DEFAULT_APP_SETTINGS.previewFontFamily,
+      previewFontSizePx: asNumberInRange(parsed.previewFontSizePx, DEFAULT_APP_SETTINGS.previewFontSizePx, 14, 56),
+      projectionFontFamily: isPresentationFontFamily(parsed.projectionFontFamily)
+        ? parsed.projectionFontFamily
+        : DEFAULT_APP_SETTINGS.projectionFontFamily,
+      projectionFontSizePx: asNumberInRange(parsed.projectionFontSizePx, DEFAULT_APP_SETTINGS.projectionFontSizePx, 30, 120),
+      projectionLineHeight: asNumberInRange(parsed.projectionLineHeight, DEFAULT_APP_SETTINGS.projectionLineHeight, 1.1, 2.2)
     };
   } catch {
     return getDefaultAppSettings();
@@ -151,6 +184,11 @@ export function settingsFromSnapshot(input: {
   customBackgroundPath: string | null;
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
+  previewFontFamily: PresentationFontFamily;
+  previewFontSizePx: number;
+  projectionFontFamily: PresentationFontFamily;
+  projectionFontSizePx: number;
+  projectionLineHeight: number;
   result: SearchResult;
 }): PersistedAppSettings {
   return {
@@ -168,6 +206,11 @@ export function settingsFromSnapshot(input: {
     backgroundMode: input.backgroundMode,
     customBackgroundPath: input.customBackgroundPath,
     backgroundDimStrength: input.backgroundDimStrength,
-    blurBackgroundImage: input.blurBackgroundImage
+    blurBackgroundImage: input.blurBackgroundImage,
+    previewFontFamily: input.previewFontFamily,
+    previewFontSizePx: input.previewFontSizePx,
+    projectionFontFamily: input.projectionFontFamily,
+    projectionFontSizePx: input.projectionFontSizePx,
+    projectionLineHeight: input.projectionLineHeight
   };
 }

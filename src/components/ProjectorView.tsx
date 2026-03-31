@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
+import { getBackgroundImageSource, getPresentationFontCssFamily } from "../features/display/presentationStyling";
 import {
   getProjectorStorageKey,
   PROJECTOR_STATE_EVENT,
@@ -22,6 +22,11 @@ type ProjectorViewState = {
   customBackgroundSource: string | null;
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
+  previewFontFamily: ProjectorPayload["previewFontFamily"];
+  previewFontSizePx: number;
+  projectionFontFamily: ProjectorPayload["projectionFontFamily"];
+  projectionFontSizePx: number;
+  projectionLineHeight: number;
 };
 
 const EMPTY_RESULT: SearchResult = {
@@ -44,7 +49,12 @@ const EMPTY_STATE: ProjectorViewState = {
   customBackgroundPath: null,
   customBackgroundSource: null,
   backgroundDimStrength: 0.5,
-  blurBackgroundImage: false
+  blurBackgroundImage: false,
+  previewFontFamily: "Inter",
+  previewFontSizePx: 21,
+  projectionFontFamily: "Inter",
+  projectionFontSizePx: 64,
+  projectionLineHeight: 1.5
 };
 
 export default function ProjectorView() {
@@ -95,7 +105,7 @@ export default function ProjectorView() {
       return null;
     }
 
-    return state.customBackgroundSource ?? convertFileSrc(state.customBackgroundPath);
+    return state.customBackgroundSource ?? getBackgroundImageSource(state.customBackgroundPath);
   }, [state.backgroundMode, state.customBackgroundPath, state.customBackgroundSource]);
 
   return (
@@ -120,7 +130,14 @@ export default function ProjectorView() {
             {state.result.reference}
           </p>
         ) : null}
-        <pre className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}>
+        <pre
+          className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}
+          style={{
+            fontFamily: getPresentationFontCssFamily(state.projectionFontFamily),
+            fontSize: `${state.projectionFontSizePx}px`,
+            lineHeight: state.projectionLineHeight
+          }}
+        >
           {verseText}
         </pre>
       </div>
