@@ -50,6 +50,7 @@ type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loade
 type SessionLogFilter = "all" | "typed" | "spoken";
 type DetectionSignalSource = "final" | "interim";
 type HistoryPanelTab = "recent-history" | "session-log";
+type OperatorDialog = "settings" | "history" | "help" | "debug" | null;
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
@@ -126,6 +127,7 @@ export default function App() {
   const [projectionFontFamily, setProjectionFontFamily] = useState(initialSettings.projectionFontFamily);
   const [projectionFontSizePx, setProjectionFontSizePx] = useState(initialSettings.projectionFontSizePx);
   const [projectionLineHeight, setProjectionLineHeight] = useState(initialSettings.projectionLineHeight);
+  const [activeDialog, setActiveDialog] = useState<OperatorDialog>(null);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
@@ -853,6 +855,18 @@ export default function App() {
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
 
+  useEffect(() => {
+    if (!activeDialog) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveDialog(null);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeDialog]);
+
   return (
     <>
       <div className={`app-shell ${isPresentationMode ? "app-shell--presentation-active" : ""}`}>
@@ -870,6 +884,18 @@ export default function App() {
             <div className="service-pill">Listening: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
             <div className="service-pill">Display: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
             {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
+            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>
+              Settings
+            </button>
+            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("history")}>
+              History / Session
+            </button>
+            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("help")}>
+              Help
+            </button>
+            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("debug")}>
+              Debug
+            </button>
             <button className="present-button" onClick={() => void handleOpenProjectorView()} disabled={isLoading}>
               {isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}
             </button>
@@ -947,288 +973,6 @@ export default function App() {
                 </div>
               </div>
             </section>
-
-            <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Settings</h2>
-                <p>Consolidated operator controls for appearance, output, and listening preferences.</p>
-              </header>
-              <div className="panel-card__body search-controls">
-                <details className="settings-section" open>
-                  <summary>Appearance</summary>
-                  <div className="settings-section__body">
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="software-theme-select">Theme</label>
-                      <select id="software-theme-select" value={softwareTheme} onChange={(e) => setSoftwareTheme(e.target.value as SoftwareTheme)}>
-                        {THEME_OPTIONS.map((theme) => (
-                          <option key={theme.value} value={theme.value}>{theme.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <p className="session-notice">{THEME_OPTIONS.find((theme) => theme.value === softwareTheme)?.description}</p>
-                  </div>
-                </details>
-
-                <details className="settings-section" open>
-                  <summary>Fonts</summary>
-                  <div className="settings-section__body">
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="preview-font-family-select">Preview font family</label>
-                      <select id="preview-font-family-select" value={previewFontFamily} onChange={(e) => setPreviewFontFamily(e.target.value as typeof previewFontFamily)}>
-                        {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
-                          <option key={`preview-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="preview-font-size-input">Preview font size ({previewFontSizePx}px)</label>
-                      <input id="preview-font-size-input" type="range" min={14} max={56} step={1} value={previewFontSizePx} onChange={(e) => setPreviewFontSizePx(Number(e.target.value))} />
-                    </div>
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="projection-font-family-select">Projection font family</label>
-                      <select id="projection-font-family-select" value={projectionFontFamily} onChange={(e) => setProjectionFontFamily(e.target.value as typeof projectionFontFamily)}>
-                        {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
-                          <option key={`projector-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="projection-font-size-input">Projection font size ({projectionFontSizePx}px)</label>
-                      <input id="projection-font-size-input" type="range" min={30} max={120} step={1} value={projectionFontSizePx} onChange={(e) => setProjectionFontSizePx(Number(e.target.value))} />
-                    </div>
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="projection-line-height-input">Projection line height ({projectionLineHeight.toFixed(2)})</label>
-                      <input id="projection-line-height-input" type="range" min={1.1} max={2.2} step={0.05} value={projectionLineHeight} onChange={(e) => setProjectionLineHeight(Number(e.target.value))} />
-                    </div>
-                  </div>
-                </details>
-
-                <details className="settings-section" open>
-                  <summary>Presentation Background</summary>
-                  <div className="settings-section__body">
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="background-mode-select">Background style</label>
-                      <select id="background-mode-select" value={backgroundMode} onChange={(e) => setBackgroundMode(e.target.value as PresentationBackgroundMode)}>
-                        <option value="solid-dark">Solid dark</option>
-                        <option value="custom-image">Custom image</option>
-                      </select>
-                    </div>
-                    <div className="service-actions">
-                      <button className="present-button present-button--secondary" type="button" onClick={() => void handlePickBackgroundImage()}>Choose Background Image</button>
-                      <button className="present-button present-button--secondary" type="button" onClick={handleResetBackgroundImage}>Use Solid Dark</button>
-                    </div>
-                    <p className="session-notice">Current image: {customBackgroundPath ?? "None selected"}</p>
-                    <label className="inline-check">
-                      <input type="checkbox" checked={blurBackgroundImage} onChange={(e) => setBlurBackgroundImage(e.target.checked)} disabled={backgroundMode !== "custom-image"} />
-                      Blur custom image for readability
-                    </label>
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="background-dim-input">Image dim strength ({Math.round(backgroundDimStrength * 100)}%)</label>
-                      <input id="background-dim-input" type="range" min={0.2} max={0.9} step={0.05} value={backgroundDimStrength} disabled={backgroundMode !== "custom-image"} onChange={(e) => setBackgroundDimStrength(Number(e.target.value))} />
-                    </div>
-                  </div>
-                </details>
-
-                <details className="settings-section" open>
-                  <summary>Display Options</summary>
-                  <div className="settings-section__body">
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="display-mode-select">Display mode</label>
-                      <select id="display-mode-select" value={displayMode} onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}>
-                        <option value="fullscreen">Fullscreen</option>
-                        <option value="lower-third">Lower Third</option>
-                      </select>
-                    </div>
-                    <label className="inline-check">
-                      <input type="checkbox" checked={showPresentationReference} onChange={(e) => setShowPresentationReference(e.target.checked)} />
-                      Show reference in presenter view
-                    </label>
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="reference-placement-select">Reference placement</label>
-                      <select id="reference-placement-select" value={referencePlacement} onChange={(e) => setReferencePlacement(e.target.value as ReferencePlacement)}>
-                        <option value="top-left">Top-left</option>
-                        <option value="top-center">Top-center</option>
-                        <option value="bottom-left">Bottom-left</option>
-                      </select>
-                    </div>
-                    <label className="inline-check">
-                      <input type="checkbox" checked={useSafeMargins} onChange={(e) => setUseSafeMargins(e.target.checked)} />
-                      Use projector safe margins
-                    </label>
-                  </div>
-                </details>
-
-                <details className="settings-section" open>
-                  <summary>Listening</summary>
-                  <div className="settings-section__body">
-                    <div className="translation-row">
-                      <label className="field-label" htmlFor="listening-mode-select">Listening mode</label>
-                      <select id="listening-mode-select" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
-                        <option value="manual">Manual (operator confirms search)</option>
-                        <option value="auto">Auto (high-confidence spoken references present automatically)</option>
-                      </select>
-                    </div>
-                    <label className="inline-check">
-                      <input type="checkbox" checked={reopenProjectorOnLaunch} onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)} />
-                      Reopen projector window on startup
-                    </label>
-                  </div>
-                </details>
-              </div>
-            </section>
-
-            <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Quick Start</h2>
-                <p>Compact first-use guidance. Collapse when not needed.</p>
-              </header>
-
-              <div className="panel-card__body">
-                <details className="quick-start" open={helpPanelExpanded} onToggle={(event) => setHelpPanelExpanded(event.currentTarget.open)}>
-                  <summary>{helpPanelExpanded ? "Hide help panel" : "Show help panel"}</summary>
-                  <ul>
-                    <li><strong>Typing search:</strong> Enter a reference and press Enter or click Search.</li>
-                    <li><strong>Listening modes:</strong> Manual captures references for review; Auto presents high-confidence spoken references.</li>
-                    <li><strong>Display modes:</strong> Toggle Fullscreen or Lower Third for projector/fullscreen output layout.</li>
-                    <li><strong>Backgrounds:</strong> Choose solid dark or custom image with optional blur/dim for readability.</li>
-                    <li><strong>Themes:</strong> Software themes style the operator console only, not projector scripture backgrounds.</li>
-                  </ul>
-                </details>
-              </div>
-            </section>
-
-            <section className="panel-card">
-              <header className="panel-card__header"><h2>Speech Debug</h2><p>Shows transcript parsing, confidence, and ambiguity before auto-search.</p></header>
-              <div className="panel-card__body">
-                {speechDebug ? (
-                  <dl className="debug-grid">
-                    <div><dt>Heard transcript</dt><dd>{speechDebug.rawTranscript}</dd></div>
-                    <div><dt>Matched book</dt><dd>{speechDebug.canonicalBook ?? "Uncertain"}</dd></div>
-                    <div><dt>Normalized reference</dt><dd>{speechDebug.normalizedReference}</dd></div>
-                    <div><dt>Confidence</dt><dd>{(speechDebug.confidence * 100).toFixed(1)}%</dd></div>
-                    <div><dt>Ambiguity</dt><dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Ambiguous - manual review"}</dd></div>
-                    <div><dt>Book source</dt><dd>{speechDebug.debug.bookMatchSource}</dd></div>
-                    {speechDebug.debug.reason ? <div><dt>Match note</dt><dd>{speechDebug.debug.reason}</dd></div> : null}
-                  </dl>
-                ) : <p className="history-empty">No speech transcript captured yet.</p>}
-              </div>
-            </section>
-
-            <section className="panel-card">
-              <header className="panel-card__header"><h2>History</h2><p>One place for recent lookups and full service recall.</p></header>
-              <div className="panel-card__body session-log-body">
-                <div className="session-log-actions">
-                  <button
-                    className={`present-button present-button--secondary ${historyPanelTab === "recent-history" ? "present-button--active" : ""}`}
-                    type="button"
-                    onClick={() => setHistoryPanelTab("recent-history")}
-                  >
-                    Recent History
-                  </button>
-                  <button
-                    className={`present-button present-button--secondary ${historyPanelTab === "session-log" ? "present-button--active" : ""}`}
-                    type="button"
-                    onClick={() => setHistoryPanelTab("session-log")}
-                  >
-                    Service Session Log
-                  </button>
-                </div>
-
-                {historyPanelTab === "recent-history" ? (
-                  <>
-                    <div className="history-pagination">
-                      <label className="field-label" htmlFor="recent-history-page-size">Page size</label>
-                      <select
-                        id="recent-history-page-size"
-                        value={String(recentHistoryPageSize)}
-                        onChange={(e) => {
-                          setRecentHistoryPageSize(Number(e.target.value));
-                          setRecentHistoryPage(1);
-                        }}
-                      >
-                        <option value="5">5</option>
-                        <option value="8">8</option>
-                        <option value="12">12</option>
-                        <option value="20">20</option>
-                      </select>
-                    </div>
-                    {history.length === 0 ? <p className="history-empty">No successful searches yet.</p> : (
-                      <>
-                        <ul className="history-list">
-                          {pagedHistory.map((item, idx) => (
-                            <li key={`${item.reference}-${item.timestampMs}-${idx}`}>
-                              <button className="history-list__item" onClick={() => setReference(item.reference)}>
-                                <span className="history-list__reference">{item.reference}</span>
-                                <span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span>
-                                <span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                        <div className="history-pagination history-pagination--actions">
-                          <button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.max(1, value - 1))} disabled={recentHistoryPage <= 1}>Previous</button>
-                          <p className="history-empty">Page {recentHistoryPage} of {recentHistoryPageCount}</p>
-                          <button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.min(recentHistoryPageCount, value + 1))} disabled={recentHistoryPage >= recentHistoryPageCount}>Next</button>
-                        </div>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="session-log-actions session-log-actions--filters">
-                      <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("txt")}>Export TXT</button>
-                      <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("csv")}>Export CSV</button>
-                    </div>
-                    <div className="session-log-actions">
-                      <button className={`present-button present-button--secondary ${sessionLogFilter === "all" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("all"); setSessionLogPage(1); }}>All</button>
-                      <button className={`present-button present-button--secondary ${sessionLogFilter === "typed" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("typed"); setSessionLogPage(1); }}>Typed</button>
-                      <button className={`present-button present-button--secondary ${sessionLogFilter === "spoken" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("spoken"); setSessionLogPage(1); }}>Spoken</button>
-                    </div>
-                    <div className="session-log-actions">
-                      <button className="present-button present-button--secondary" type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
-                      <button className="present-button present-button--secondary" type="button" onClick={handleClearSessionLog}>Clear Session Log</button>
-                    </div>
-                    <div className="history-pagination">
-                      <label className="field-label" htmlFor="session-log-page-size">Page size</label>
-                      <select
-                        id="session-log-page-size"
-                        value={String(sessionLogPageSize)}
-                        onChange={(e) => {
-                          setSessionLogPageSize(Number(e.target.value));
-                          setSessionLogPage(1);
-                        }}
-                      >
-                        <option value="5">5</option>
-                        <option value="8">8</option>
-                        <option value="12">12</option>
-                        <option value="20">20</option>
-                      </select>
-                    </div>
-                    {sessionNotice ? <p className="session-notice">{sessionNotice}</p> : null}
-                    {sessionLog.length === 0 ? <p className="history-empty">No verses presented in this session yet.</p> : filteredSessionLog.length === 0 ? <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p> : (
-                      <>
-                        <ol className="session-log-list" aria-label="Service session log">
-                          {pagedSessionLog.map((entry) => (
-                            <li key={entry.id}>
-                              <button className="history-list__item" onClick={() => void handleRecallSessionEntry(entry)}>
-                                <span className="history-list__reference">{entry.reference}</span>
-                                <span className="history-list__meta">Source: {entry.sourceType}</span>
-                                <span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span>
-                              </button>
-                            </li>
-                          ))}
-                        </ol>
-                        <div className="history-pagination history-pagination--actions">
-                          <button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.max(1, value - 1))} disabled={sessionLogPage <= 1}>Previous</button>
-                          <p className="history-empty">Page {sessionLogPage} of {sessionLogPageCount}</p>
-                          <button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.min(sessionLogPageCount, value + 1))} disabled={sessionLogPage >= sessionLogPageCount}>Next</button>
-                        </div>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </section>
           </div>
 
           <div className="workspace-column">
@@ -1286,14 +1030,248 @@ export default function App() {
                 </dl>
               </div>
             </section>
-
-            <section className="panel-card">
-              <header className="panel-card__header"><h2>Canonical Book Coverage</h2><p>Configured spoken-book dictionary for all supported KJV books.</p></header>
-              <div className="panel-card__body"><p className="coverage-count">{CANONICAL_BOOK_DICTIONARY.length} books configured.</p></div>
-            </section>
           </div>
         </div>
       </div>
+
+      {activeDialog ? (
+        <div className="operator-dialog-backdrop" role="presentation" onClick={() => setActiveDialog(null)}>
+          <section className="operator-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+            <header className="operator-dialog__header">
+              <h2>
+                {activeDialog === "settings"
+                  ? "Settings"
+                  : activeDialog === "history"
+                    ? "History / Session"
+                    : activeDialog === "help"
+                      ? "Quick Start / Help"
+                      : "Debug / Advanced"}
+              </h2>
+              <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog(null)}>
+                Close
+              </button>
+            </header>
+            <div className="operator-dialog__body">
+              {activeDialog === "settings" ? (
+                <div className="search-controls">
+                  <details className="settings-section" open>
+                    <summary>Appearance</summary>
+                    <div className="settings-section__body">
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="software-theme-select">Theme</label>
+                        <select id="software-theme-select" value={softwareTheme} onChange={(e) => setSoftwareTheme(e.target.value as SoftwareTheme)}>
+                          {THEME_OPTIONS.map((theme) => (
+                            <option key={theme.value} value={theme.value}>{theme.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <p className="session-notice">{THEME_OPTIONS.find((theme) => theme.value === softwareTheme)?.description}</p>
+                    </div>
+                  </details>
+                  <details className="settings-section" open>
+                    <summary>Fonts</summary>
+                    <div className="settings-section__body">
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="preview-font-family-select">Preview font family</label>
+                        <select id="preview-font-family-select" value={previewFontFamily} onChange={(e) => setPreviewFontFamily(e.target.value as typeof previewFontFamily)}>
+                          {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                            <option key={`preview-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="preview-font-size-input">Preview font size ({previewFontSizePx}px)</label>
+                        <input id="preview-font-size-input" type="range" min={14} max={56} step={1} value={previewFontSizePx} onChange={(e) => setPreviewFontSizePx(Number(e.target.value))} />
+                      </div>
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="projection-font-family-select">Projection font family</label>
+                        <select id="projection-font-family-select" value={projectionFontFamily} onChange={(e) => setProjectionFontFamily(e.target.value as typeof projectionFontFamily)}>
+                          {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                            <option key={`projector-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="projection-font-size-input">Projection font size ({projectionFontSizePx}px)</label>
+                        <input id="projection-font-size-input" type="range" min={30} max={120} step={1} value={projectionFontSizePx} onChange={(e) => setProjectionFontSizePx(Number(e.target.value))} />
+                      </div>
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="projection-line-height-input">Projection line height ({projectionLineHeight.toFixed(2)})</label>
+                        <input id="projection-line-height-input" type="range" min={1.1} max={2.2} step={0.05} value={projectionLineHeight} onChange={(e) => setProjectionLineHeight(Number(e.target.value))} />
+                      </div>
+                    </div>
+                  </details>
+                  <details className="settings-section" open>
+                    <summary>Presentation Background</summary>
+                    <div className="settings-section__body">
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="background-mode-select">Background style</label>
+                        <select id="background-mode-select" value={backgroundMode} onChange={(e) => setBackgroundMode(e.target.value as PresentationBackgroundMode)}>
+                          <option value="solid-dark">Solid dark</option>
+                          <option value="custom-image">Custom image</option>
+                        </select>
+                      </div>
+                      <div className="service-actions">
+                        <button className="present-button present-button--secondary" type="button" onClick={() => void handlePickBackgroundImage()}>Choose Background Image</button>
+                        <button className="present-button present-button--secondary" type="button" onClick={handleResetBackgroundImage}>Use Solid Dark</button>
+                      </div>
+                      <p className="session-notice">Current image: {customBackgroundPath ?? "None selected"}</p>
+                      <label className="inline-check">
+                        <input type="checkbox" checked={blurBackgroundImage} onChange={(e) => setBlurBackgroundImage(e.target.checked)} disabled={backgroundMode !== "custom-image"} />
+                        Blur custom image for readability
+                      </label>
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="background-dim-input">Image dim strength ({Math.round(backgroundDimStrength * 100)}%)</label>
+                        <input id="background-dim-input" type="range" min={0.2} max={0.9} step={0.05} value={backgroundDimStrength} disabled={backgroundMode !== "custom-image"} onChange={(e) => setBackgroundDimStrength(Number(e.target.value))} />
+                      </div>
+                    </div>
+                  </details>
+                  <details className="settings-section" open>
+                    <summary>Display Options</summary>
+                    <div className="settings-section__body">
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="display-mode-select">Display mode</label>
+                        <select id="display-mode-select" value={displayMode} onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}>
+                          <option value="fullscreen">Fullscreen</option>
+                          <option value="lower-third">Lower Third</option>
+                        </select>
+                      </div>
+                      <label className="inline-check">
+                        <input type="checkbox" checked={showPresentationReference} onChange={(e) => setShowPresentationReference(e.target.checked)} />
+                        Show reference in presenter view
+                      </label>
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="reference-placement-select">Reference placement</label>
+                        <select id="reference-placement-select" value={referencePlacement} onChange={(e) => setReferencePlacement(e.target.value as ReferencePlacement)}>
+                          <option value="top-left">Top-left</option>
+                          <option value="top-center">Top-center</option>
+                          <option value="bottom-left">Bottom-left</option>
+                        </select>
+                      </div>
+                      <label className="inline-check">
+                        <input type="checkbox" checked={useSafeMargins} onChange={(e) => setUseSafeMargins(e.target.checked)} />
+                        Use projector safe margins
+                      </label>
+                    </div>
+                  </details>
+                  <details className="settings-section" open>
+                    <summary>Listening</summary>
+                    <div className="settings-section__body">
+                      <div className="translation-row">
+                        <label className="field-label" htmlFor="listening-mode-select">Listening mode</label>
+                        <select id="listening-mode-select" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
+                          <option value="manual">Manual (operator confirms search)</option>
+                          <option value="auto">Auto (high-confidence spoken references present automatically)</option>
+                        </select>
+                      </div>
+                      <label className="inline-check">
+                        <input type="checkbox" checked={reopenProjectorOnLaunch} onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)} />
+                        Reopen projector window on startup
+                      </label>
+                    </div>
+                  </details>
+                </div>
+              ) : null}
+
+              {activeDialog === "history" ? (
+                <div className="session-log-body">
+                  <div className="session-log-actions">
+                    <button className={`present-button present-button--secondary ${historyPanelTab === "recent-history" ? "present-button--active" : ""}`} type="button" onClick={() => setHistoryPanelTab("recent-history")}>Recent History</button>
+                    <button className={`present-button present-button--secondary ${historyPanelTab === "session-log" ? "present-button--active" : ""}`} type="button" onClick={() => setHistoryPanelTab("session-log")}>Service Session Log</button>
+                  </div>
+                  {historyPanelTab === "recent-history" ? (
+                    <>
+                      <div className="history-pagination">
+                        <label className="field-label" htmlFor="recent-history-page-size">Page size</label>
+                        <select id="recent-history-page-size" value={String(recentHistoryPageSize)} onChange={(e) => { setRecentHistoryPageSize(Number(e.target.value)); setRecentHistoryPage(1); }}>
+                          <option value="5">5</option><option value="8">8</option><option value="12">12</option><option value="20">20</option>
+                        </select>
+                      </div>
+                      {history.length === 0 ? <p className="history-empty">No successful searches yet.</p> : (<><ul className="history-list">{pagedHistory.map((item, idx) => (
+                        <li key={`${item.reference}-${item.timestampMs}-${idx}`}><button className="history-list__item" onClick={() => setReference(item.reference)}><span className="history-list__reference">{item.reference}</span><span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span><span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span></button></li>
+                      ))}</ul><div className="history-pagination history-pagination--actions"><button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.max(1, value - 1))} disabled={recentHistoryPage <= 1}>Previous</button><p className="history-empty">Page {recentHistoryPage} of {recentHistoryPageCount}</p><button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.min(recentHistoryPageCount, value + 1))} disabled={recentHistoryPage >= recentHistoryPageCount}>Next</button></div></>)}
+                    </>
+                  ) : (
+                    <>
+                      <div className="session-log-actions session-log-actions--filters">
+                        <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("txt")}>Export TXT</button>
+                        <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("csv")}>Export CSV</button>
+                      </div>
+                      <div className="session-log-actions">
+                        <button className={`present-button present-button--secondary ${sessionLogFilter === "all" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("all"); setSessionLogPage(1); }}>All</button>
+                        <button className={`present-button present-button--secondary ${sessionLogFilter === "typed" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("typed"); setSessionLogPage(1); }}>Typed</button>
+                        <button className={`present-button present-button--secondary ${sessionLogFilter === "spoken" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("spoken"); setSessionLogPage(1); }}>Spoken</button>
+                      </div>
+                      <div className="session-log-actions">
+                        <button className="present-button present-button--secondary" type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
+                        <button className="present-button present-button--secondary" type="button" onClick={handleClearSessionLog}>Clear Session Log</button>
+                      </div>
+                      <div className="history-pagination">
+                        <label className="field-label" htmlFor="session-log-page-size">Page size</label>
+                        <select id="session-log-page-size" value={String(sessionLogPageSize)} onChange={(e) => { setSessionLogPageSize(Number(e.target.value)); setSessionLogPage(1); }}>
+                          <option value="5">5</option><option value="8">8</option><option value="12">12</option><option value="20">20</option>
+                        </select>
+                      </div>
+                      {sessionNotice ? <p className="session-notice">{sessionNotice}</p> : null}
+                      {sessionLog.length === 0 ? <p className="history-empty">No verses presented in this session yet.</p> : filteredSessionLog.length === 0 ? <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p> : (<><ol className="session-log-list" aria-label="Service session log">{pagedSessionLog.map((entry) => (<li key={entry.id}><button className="history-list__item" onClick={() => void handleRecallSessionEntry(entry)}><span className="history-list__reference">{entry.reference}</span><span className="history-list__meta">Source: {entry.sourceType}</span><span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span></button></li>))}</ol><div className="history-pagination history-pagination--actions"><button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.max(1, value - 1))} disabled={sessionLogPage <= 1}>Previous</button><p className="history-empty">Page {sessionLogPage} of {sessionLogPageCount}</p><button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.min(sessionLogPageCount, value + 1))} disabled={sessionLogPage >= sessionLogPageCount}>Next</button></div></>)}
+                    </>
+                  )}
+                </div>
+              ) : null}
+
+              {activeDialog === "help" ? (
+                <details className="quick-start" open={helpPanelExpanded} onToggle={(event) => setHelpPanelExpanded(event.currentTarget.open)}>
+                  <summary>{helpPanelExpanded ? "Hide help panel" : "Show help panel"}</summary>
+                  <ul>
+                    <li><strong>Typing search:</strong> Enter a reference and press Enter or click Search.</li>
+                    <li><strong>Listening modes:</strong> Manual captures references for review; Auto presents high-confidence spoken references.</li>
+                    <li><strong>Display modes:</strong> Toggle Fullscreen or Lower Third for projector/fullscreen output layout.</li>
+                    <li><strong>Backgrounds:</strong> Choose solid dark or custom image with optional blur/dim for readability.</li>
+                    <li><strong>Themes:</strong> Software themes style the operator console only, not projector scripture backgrounds.</li>
+                  </ul>
+                </details>
+              ) : null}
+
+              {activeDialog === "debug" ? (
+                <div className="search-controls">
+                  <section className="panel-card">
+                    <header className="panel-card__header"><h2>Speech Debug</h2><p>Shows transcript parsing, confidence, and ambiguity before auto-search.</p></header>
+                    <div className="panel-card__body">
+                      {speechDebug ? (
+                        <dl className="debug-grid">
+                          <div><dt>Heard transcript</dt><dd>{speechDebug.rawTranscript}</dd></div>
+                          <div><dt>Matched book</dt><dd>{speechDebug.canonicalBook ?? "Uncertain"}</dd></div>
+                          <div><dt>Normalized reference</dt><dd>{speechDebug.normalizedReference}</dd></div>
+                          <div><dt>Confidence</dt><dd>{(speechDebug.confidence * 100).toFixed(1)}%</dd></div>
+                          <div><dt>Ambiguity</dt><dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Ambiguous - manual review"}</dd></div>
+                          <div><dt>Book source</dt><dd>{speechDebug.debug.bookMatchSource}</dd></div>
+                          {speechDebug.debug.reason ? <div><dt>Match note</dt><dd>{speechDebug.debug.reason}</dd></div> : null}
+                        </dl>
+                      ) : <p className="history-empty">No speech transcript captured yet.</p>}
+                    </div>
+                  </section>
+                  <section className="panel-card">
+                    <header className="panel-card__header"><h2>Presentation Background Debug</h2><p>Lightweight visibility into shared background propagation.</p></header>
+                    <div className="panel-card__body">
+                      <dl className="debug-grid">
+                        <div><dt>Raw file path</dt><dd>{customBackgroundPath ?? "None selected"}</dd></div>
+                        <div><dt>Renderable source</dt><dd>{customBackgroundSource ?? "Not available"}</dd></div>
+                        <div><dt>Verse preview using custom image</dt><dd>{isVersePreviewUsingCustomImage ? "Yes" : "No"}</dd></div>
+                        <div><dt>Projector using custom image</dt><dd>{isProjectorUsingCustomImage ? "Yes" : "No"}</dd></div>
+                        <div><dt>Fullscreen using custom image</dt><dd>{isFullscreenUsingCustomImage ? "Yes" : "No"}</dd></div>
+                      </dl>
+                    </div>
+                  </section>
+                  <section className="panel-card">
+                    <header className="panel-card__header"><h2>Canonical Book Coverage</h2><p>Configured spoken-book dictionary for all supported KJV books.</p></header>
+                    <div className="panel-card__body"><p className="coverage-count">{CANONICAL_BOOK_DICTIONARY.length} books configured.</p></div>
+                  </section>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {isPresentationMode ? (
         <section
