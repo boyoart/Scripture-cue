@@ -137,6 +137,29 @@ export default function App() {
         : undefined,
     [customBackgroundSource]
   );
+  const previewSurfaceStyle = useMemo(
+    () =>
+      hasCustomPresentationBackground
+        ? {
+            ...presentationBackgroundStyle
+          }
+        : undefined,
+    [hasCustomPresentationBackground, presentationBackgroundStyle]
+  );
+  const fullscreenSurfaceStyle = useMemo(
+    () =>
+      backgroundMode === "custom-image" && customBackgroundSource
+        ? {
+            backgroundImage: `url("${customBackgroundSource}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat"
+          }
+        : undefined,
+    [backgroundMode, customBackgroundSource]
+  );
+  const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
+  const fullscreenDimOpacity = backgroundMode === "custom-image" ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const isVersePreviewUsingCustomImage = hasCustomPresentationBackground;
   const isProjectorUsingCustomImage = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
   const isFullscreenUsingCustomImage = isPresentationMode && backgroundMode === "custom-image" && Boolean(customBackgroundSource);
@@ -1188,8 +1211,9 @@ export default function App() {
                 <div
                   className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
                   data-background-received={String(hasCustomPresentationBackground)}
+                  style={previewSurfaceStyle}
                 >
-                  {hasCustomPresentationBackground ? (
+                  {hasCustomPresentationBackground && blurBackgroundImage ? (
                     <div
                       className={`presentation-background verse-preview__background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
                       style={presentationBackgroundStyle}
@@ -1198,7 +1222,7 @@ export default function App() {
                   ) : null}
                   <div
                     className="presentation-background__dim verse-preview__dim"
-                    style={{ opacity: hasCustomPresentationBackground ? backgroundDimStrength : 0.35 }}
+                    style={{ opacity: previewDimOpacity }}
                     aria-hidden="true"
                   />
                   <pre
@@ -1245,8 +1269,12 @@ export default function App() {
       </div>
 
       {isPresentationMode ? (
-        <section className={`presentation-mode presentation-mode--${displayMode}`} aria-live="polite">
-          {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource ? (
+        <section
+          className={`presentation-mode presentation-mode--${displayMode}`}
+          aria-live="polite"
+          style={fullscreenSurfaceStyle}
+        >
+          {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource && presentationState.blurBackgroundImage ? (
             <div
               className={`presentation-background ${presentationState.blurBackgroundImage ? "presentation-background--blur" : ""}`}
               style={presentationBackgroundStyle}
@@ -1255,7 +1283,7 @@ export default function App() {
           ) : null}
           <div
             className="presentation-background__dim"
-            style={{ opacity: presentationState.backgroundMode === "custom-image" ? presentationState.backgroundDimStrength : 0.35 }}
+            style={{ opacity: fullscreenDimOpacity }}
             aria-hidden="true"
           />
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>

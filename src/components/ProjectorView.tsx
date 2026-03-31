@@ -120,6 +120,7 @@ export default function ProjectorView() {
         : undefined,
     [backgroundImageSrc]
   );
+  const dimOpacity = state.backgroundMode === "custom-image" ? Math.min(state.backgroundDimStrength, 0.8) : 0.35;
 
   useEffect(() => {
     console.info("[presentation-background] projector received state", {
@@ -131,8 +132,13 @@ export default function ProjectorView() {
   }, [backgroundImageSrc, state.backgroundMode, state.customBackgroundPath]);
 
   return (
-    <main className="projector-screen" aria-live="polite" data-background-received={String(Boolean(backgroundImageSrc))}>
-      {backgroundImageSrc ? (
+    <main
+      className="projector-screen"
+      aria-live="polite"
+      data-background-received={String(Boolean(backgroundImageSrc))}
+      style={projectorBackgroundStyle}
+    >
+      {backgroundImageSrc && state.blurBackgroundImage ? (
         <div
           className={`presentation-background presentation-background--projector ${state.blurBackgroundImage ? "presentation-background--blur" : ""}`}
           style={projectorBackgroundStyle}
@@ -141,7 +147,7 @@ export default function ProjectorView() {
       ) : null}
       <div
         className="presentation-background__dim"
-        style={{ opacity: state.backgroundMode === "custom-image" ? state.backgroundDimStrength : 0.35 }}
+        style={{ opacity: dimOpacity }}
         aria-hidden="true"
       />
       <div
