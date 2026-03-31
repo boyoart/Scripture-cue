@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/window";
-import { save } from "@tauri-apps/api/dialog";
+import { open, save } from "@tauri-apps/api/dialog";
 import { writeTextFile } from "@tauri-apps/api/fs";
 import { writeText } from "@tauri-apps/api/clipboard";
+import { convertFileSrc } from "@tauri-apps/api/tauri";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
@@ -14,10 +15,18 @@ import {
   PROJECTOR_STATE_EVENT,
   getProjectorRouteUrl,
   writeProjectorState,
+  type DisplayMode,
+  type ListeningMode,
+  type PresentationBackgroundMode,
   type ProjectorPayload,
   type ReferencePlacement
 } from "./features/display/projectorSync";
-import { readAppSettings, settingsFromSnapshot, writeAppSettings } from "./features/settings";
+import {
+  readAppSettings,
+  settingsFromSnapshot,
+  writeAppSettings,
+  type SoftwareTheme
+} from "./features/settings";
 import {
   addSessionLogEntry,
   formatSessionTimestamp,
@@ -48,6 +57,14 @@ const EMPTY_RESULT: SearchResult = {
   message: "No result loaded yet."
 };
 
+const THEME_OPTIONS: Array<{ value: SoftwareTheme; label: string; description: string }> = [
+  { value: "midnight", label: "Midnight", description: "Deep blue stage-style console." },
+  { value: "charcoal", label: "Charcoal", description: "Neutral dark gray production look." },
+  { value: "royal-blue", label: "Royal Blue", description: "Blue-forward confidence monitor UI." },
+  { value: "warm-church", label: "Warm Church", description: "Warmer neutral palette for softer contrast." },
+  { value: "high-contrast", label: "High Contrast", description: "Maximum readability and edge clarity." }
+];
+
 export default function App() {
   const initialSettings = useMemo(() => readAppSettings(), []);
   const [reference, setReference] = useState("John 3:16");
@@ -70,6 +87,13 @@ export default function App() {
   const [helpPanelExpanded, setHelpPanelExpanded] = useState(initialSettings.helpPanelExpanded);
   const [isProjectorWindowOpen, setIsProjectorWindowOpen] = useState(initialSettings.wasProjectorWindowOpen);
   const [isRestoringStartupState, setIsRestoringStartupState] = useState(true);
+  const [listeningMode, setListeningMode] = useState<ListeningMode>(initialSettings.listeningMode);
+  const [displayMode, setDisplayMode] = useState<DisplayMode>(initialSettings.displayMode);
+  const [softwareTheme, setSoftwareTheme] = useState<SoftwareTheme>(initialSettings.softwareTheme);
+  const [backgroundMode, setBackgroundMode] = useState<PresentationBackgroundMode>(initialSettings.backgroundMode);
+  const [customBackgroundPath, setCustomBackgroundPath] = useState<string | null>(initialSettings.customBackgroundPath);
+  const [backgroundDimStrength, setBackgroundDimStrength] = useState(initialSettings.backgroundDimStrength);
+  const [blurBackgroundImage, setBlurBackgroundImage] = useState(initialSettings.blurBackgroundImage);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
@@ -84,16 +108,46 @@ export default function App() {
     return result.verses.map((v) => `${v.verse}. ${v.text}`).join("\n");
   }, [result]);
 
+  const customBackgroundSource = useMemo(
+    () => (customBackgroundPath ? convertFileSrc(customBackgroundPath) : null),
+    [customBackgroundPath]
+  );
+
   const projectorPayload: ProjectorPayload = useMemo(
     () => ({
       result,
       verseText,
       showReference: showPresentationReference,
       referencePlacement,
-      useSafeMargins
+      useSafeMargins,
+      displayMode,
+      backgroundMode,
+      customBackgroundPath,
+      customBackgroundSource,
+      backgroundDimStrength,
+      blurBackgroundImage
     }),
-    [result, referencePlacement, showPresentationReference, useSafeMargins, verseText]
+    [
+      result,
+      verseText,
+      showPresentationReference,
+      referencePlacement,
+      useSafeMargins,
+      displayMode,
+      backgroundMode,
+      customBackgroundPath,
+      customBackgroundSource,
+      backgroundDimStrength,
+      blurBackgroundImage
+    ]
   );
+
+  useEffect(() => {
+    document.body.dataset.theme = softwareTheme;
+    return () => {
+      delete document.body.dataset.theme;
+    };
+  }, [softwareTheme]);
 
   useEffect(() => {
     writeProjectorState(projectorPayload);
@@ -112,18 +166,32 @@ export default function App() {
         reopenProjectorOnLaunch,
         wasProjectorWindowOpen: isProjectorWindowOpen,
         helpPanelExpanded,
+        listeningMode,
+        displayMode,
+        softwareTheme,
+        backgroundMode,
+        customBackgroundPath,
+        backgroundDimStrength,
+        blurBackgroundImage,
         result
       })
     );
   }, [
-    helpPanelExpanded,
-    isProjectorWindowOpen,
-    referencePlacement,
-    reopenProjectorOnLaunch,
-    result,
-    selectedTranslation,
     showPresentationReference,
-    useSafeMargins
+    referencePlacement,
+    useSafeMargins,
+    selectedTranslation,
+    reopenProjectorOnLaunch,
+    isProjectorWindowOpen,
+    helpPanelExpanded,
+    listeningMode,
+    displayMode,
+    softwareTheme,
+    backgroundMode,
+    customBackgroundPath,
+    backgroundDimStrength,
+    blurBackgroundImage,
+    result
   ]);
 
   const filteredSessionLog = useMemo(() => {
@@ -137,18 +205,15 @@ export default function App() {
   const pushHistoryWithCooldown = useCallback((nextReference: string) => {
     const now = Date.now();
     const last = lastHistoryEntryRef.current;
-
     const isDuplicateWithinCooldown =
       last?.reference === nextReference && now - last.timestampMs < HISTORY_DUPLICATE_COOLDOWN_MS;
 
     lastHistoryEntryRef.current = { reference: nextReference, timestampMs: now };
 
     setHistory((prev) => {
-      if (isDuplicateWithinCooldown) {
-        return prev;
-      }
-
+      if (isDuplicateWithinCooldown) return prev;
       const existingIndex = prev.findIndex((item) => item.reference === nextReference);
+
       if (existingIndex >= 0) {
         const existingItem = prev[existingIndex];
         const nextEntry: HistoryItem = {
@@ -160,33 +225,26 @@ export default function App() {
         return [nextEntry, ...withoutExisting].slice(0, 20);
       }
 
-      return [
-        {
-          reference: nextReference,
-          timestampMs: now,
-          repeats: 1
-        },
-        ...prev
-      ].slice(0, 20);
+      return [{ reference: nextReference, timestampMs: now, repeats: 1 }, ...prev].slice(0, 20);
     });
   }, []);
 
-  const syncProjectorNow = useCallback(async (nextStatus = "Projector updated") => {
-    writeProjectorState(projectorPayload);
-    try {
-      await emit(PROJECTOR_STATE_EVENT, projectorPayload);
-      setStatus(nextStatus);
-    } catch (error) {
-      console.warn("[projector] manual sync failed", error);
-      setStatus("Projector sync failed");
-    }
-  }, [projectorPayload]);
+  const syncProjectorNow = useCallback(
+    async (nextStatus = "Projector updated") => {
+      writeProjectorState(projectorPayload);
+      try {
+        await emit(PROJECTOR_STATE_EVENT, projectorPayload);
+        setStatus(nextStatus);
+      } catch (error) {
+        console.warn("[projector] manual sync failed", error);
+        setStatus("Projector sync failed");
+      }
+    },
+    [projectorPayload]
+  );
 
   const handleClearCurrentVerse = useCallback(() => {
-    setResult({
-      ...EMPTY_RESULT,
-      message: "Verse cleared by operator."
-    });
+    setResult({ ...EMPTY_RESULT, message: "Verse cleared by operator." });
     setListeningState("idle");
     setStatus("Current verse cleared");
   }, []);
@@ -195,51 +253,41 @@ export default function App() {
     void syncProjectorNow("Current verse re-presented");
   }, [syncProjectorNow]);
 
-  const handleSearch = useCallback(async (overrideReference?: string, sourceType: SessionSourceType = "typed") => {
-    const trimmed = (overrideReference ?? reference).trim();
-    if (!trimmed) return;
+  const handleSearch = useCallback(
+    async (overrideReference?: string, sourceType: SessionSourceType = "typed") => {
+      const trimmed = (overrideReference ?? reference).trim();
+      if (!trimmed) return;
 
-    try {
-      setIsLoading(true);
-      setStatus("Searching...");
-      setListeningState("processing");
+      try {
+        setIsLoading(true);
+        setStatus("Searching...");
+        setListeningState("processing");
 
-      const response = await searchKjv(trimmed);
-      setResult(response);
+        const response = await searchKjv(trimmed);
+        setResult(response);
 
-      if (response.found && response.verses.length > 0) {
-        pushHistoryWithCooldown(response.reference);
-        setSessionLog((prev) =>
-          addSessionLogEntry(prev, {
-            reference: response.reference,
-            sourceType
-          })
-        );
-        setListeningState("verse_loaded");
-        setStatus("Verse loaded");
-      } else {
-        setListeningState("idle");
-        setStatus(response.message ?? "No result found");
+        if (response.found && response.verses.length > 0) {
+          pushHistoryWithCooldown(response.reference);
+          setSessionLog((prev) => addSessionLogEntry(prev, { reference: response.reference, sourceType }));
+          setListeningState("verse_loaded");
+          setStatus("Verse loaded");
+        } else {
+          setListeningState("idle");
+          setStatus(response.message ?? "No result found");
+        }
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error, null, 2);
+
+        setResult({ ...EMPTY_RESULT, message: `Search failed: ${message}` });
+        setListeningState("error");
+        setStatus("Search failed");
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : JSON.stringify(error, null, 2);
-
-      setResult({
-        ...EMPTY_RESULT,
-        message: `Search failed: ${message}`
-      });
-
-      setListeningState("error");
-      setStatus("Search failed");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [pushHistoryWithCooldown, reference]);
+    },
+    [pushHistoryWithCooldown, reference]
+  );
 
   async function handleStartListening() {
     setSpeechNotice(null);
@@ -253,80 +301,83 @@ export default function App() {
     setStatus("Listening stopped");
   }
 
-  const runSpeechSearch = useCallback(async (spokenTranscript: string) => {
-    if (!spokenTranscript.trim()) {
-      return;
-    }
+  const runSpeechSearch = useCallback(
+    async (spokenTranscript: string) => {
+      if (!spokenTranscript.trim()) return;
 
-    const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
-    setSpeechDebug(normalized);
+      const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
+      setSpeechDebug(normalized);
 
-    const normalizedValue = normalized.normalizedReference.trim();
-    const canAutoSearch =
-      normalized.query.kind === "spoken_reference" &&
-      normalized.ambiguity === "clear" &&
-      Boolean(normalized.structuredReference) &&
-      normalized.confidence >= 0.74;
-    const nextReference = canAutoSearch ? normalizedValue || spokenTranscript.trim() : spokenTranscript.trim();
-    setReference(nextReference);
+      const normalizedValue = normalized.normalizedReference.trim();
+      const canAutoSearch =
+        normalized.query.kind === "spoken_reference" &&
+        normalized.ambiguity === "clear" &&
+        Boolean(normalized.structuredReference) &&
+        normalized.confidence >= 0.74;
 
-    if (!canAutoSearch) {
-      setListeningState("idle");
-      setSpeechNotice(`Heard: "${spokenTranscript}" (review before search)`);
-      return;
-    }
+      const nextReference = canAutoSearch ? normalizedValue || spokenTranscript.trim() : spokenTranscript.trim();
+      setReference(nextReference);
 
-    const now = Date.now();
-    const lastAutoSearch = lastAutoSearchRef.current;
-    const duplicateAutoSearch =
-      lastAutoSearch?.normalizedReference === nextReference &&
-      now - lastAutoSearch.timestampMs < AUTO_SEARCH_DUPLICATE_COOLDOWN_MS;
-
-    if (duplicateAutoSearch) {
-      setListeningState("idle");
-      setSpeechNotice(`Heard duplicate reference "${nextReference}" (suppressed)`);
-      return;
-    }
-
-    lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
-    setSpeechNotice(`Heard: "${spokenTranscript}" → ${nextReference}`);
-    await handleSearch(nextReference, "spoken");
-  }, [handleSearch]);
-
-  const exportSessionLog = useCallback(async (format: "txt" | "csv") => {
-    try {
-      setSessionNotice(null);
-      const suggestedName = `scripture-cue-session-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.${format}`;
-      const targetPath = await save({
-        defaultPath: suggestedName,
-        filters:
-          format === "txt"
-            ? [{ name: "Text", extensions: ["txt"] }]
-            : [{ name: "CSV", extensions: ["csv"] }]
-      });
-
-      if (!targetPath) {
-        setStatus("Session export canceled");
-        setSessionNotice("Export canceled.");
+      if (listeningMode === "manual") {
+        setListeningState("idle");
+        setSpeechNotice(`Manual mode captured: "${spokenTranscript}" (confirm search before presenting)`);
         return;
       }
 
-      const content = format === "txt" ? toSessionLogText(sessionLog) : toSessionLogCsv(sessionLog);
-      await writeTextFile(targetPath, content);
-      setStatus(`Session log exported (${format.toUpperCase()})`);
-      setSessionNotice(`Exported ${format.toUpperCase()} to ${targetPath}`);
-    } catch (error) {
-      console.error("[session] export failed", error);
-      const details =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : JSON.stringify(error);
-      setStatus("Session export failed");
-      setSessionNotice(`Export failed: ${details}`);
-    }
-  }, [sessionLog]);
+      if (!canAutoSearch) {
+        setListeningState("idle");
+        setSpeechNotice(`Auto mode held: "${spokenTranscript}" (low confidence/ambiguous, review required)`);
+        return;
+      }
+
+      const now = Date.now();
+      const lastAutoSearch = lastAutoSearchRef.current;
+      const duplicateAutoSearch =
+        lastAutoSearch?.normalizedReference === nextReference &&
+        now - lastAutoSearch.timestampMs < AUTO_SEARCH_DUPLICATE_COOLDOWN_MS;
+
+      if (duplicateAutoSearch) {
+        setListeningState("idle");
+        setSpeechNotice(`Auto mode duplicate suppressed: "${nextReference}"`);
+        return;
+      }
+
+      lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
+      setSpeechNotice(`Auto mode presenting: "${spokenTranscript}" → ${nextReference}`);
+      await handleSearch(nextReference, "spoken");
+    },
+    [handleSearch, listeningMode]
+  );
+
+  const exportSessionLog = useCallback(
+    async (format: "txt" | "csv") => {
+      try {
+        setSessionNotice(null);
+        const suggestedName = `scripture-cue-session-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.${format}`;
+        const targetPath = await save({
+          defaultPath: suggestedName,
+          filters: format === "txt" ? [{ name: "Text", extensions: ["txt"] }] : [{ name: "CSV", extensions: ["csv"] }]
+        });
+
+        if (!targetPath) {
+          setStatus("Session export canceled");
+          setSessionNotice("Export canceled.");
+          return;
+        }
+
+        const content = format === "txt" ? toSessionLogText(sessionLog) : toSessionLogCsv(sessionLog);
+        await writeTextFile(targetPath, content);
+        setStatus(`Session log exported (${format.toUpperCase()})`);
+        setSessionNotice(`Exported ${format.toUpperCase()} to ${targetPath}`);
+      } catch (error) {
+        console.error("[session] export failed", error);
+        const details = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
+        setStatus("Session export failed");
+        setSessionNotice(`Export failed: ${details}`);
+      }
+    },
+    [sessionLog]
+  );
 
   const handleClearSessionLog = useCallback(() => {
     if (sessionLog.length === 0) {
@@ -335,9 +386,7 @@ export default function App() {
     }
 
     const confirmed = window.confirm("Clear the session log for this service? Current verse will stay loaded.");
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setSessionLog([]);
     setSessionNotice("Session log cleared.");
@@ -356,21 +405,47 @@ export default function App() {
       setStatus("Current reference copied");
     } catch (error) {
       console.error("[session] copy reference failed", error);
-      const details =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : JSON.stringify(error);
+      const details = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
       setSessionNotice(`Copy failed: ${details}`);
       setStatus("Copy reference failed");
     }
   }, [result.reference]);
 
-  const handleRecallSessionEntry = useCallback(async (entry: SessionLogEntry) => {
-    setReference(entry.reference);
-    await handleSearch(entry.reference, entry.sourceType);
-  }, [handleSearch]);
+  const handleRecallSessionEntry = useCallback(
+    async (entry: SessionLogEntry) => {
+      setReference(entry.reference);
+      await handleSearch(entry.reference, entry.sourceType);
+    },
+    [handleSearch]
+  );
+
+  const handlePickBackgroundImage = useCallback(async () => {
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "bmp"] }]
+      });
+
+      if (!selected || Array.isArray(selected)) {
+        setSessionNotice("Background selection canceled.");
+        return;
+      }
+
+      setCustomBackgroundPath(selected);
+      setBackgroundMode("custom-image");
+      setStatus("Custom presentation background selected");
+    } catch (error) {
+      const details = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
+      setSessionNotice(`Background selection failed: ${details}`);
+      setStatus("Background selection failed");
+    }
+  }, []);
+
+  const handleResetBackgroundImage = useCallback(() => {
+    setCustomBackgroundPath(null);
+    setBackgroundMode("solid-dark");
+    setStatus("Presentation background reset to solid dark");
+  }, []);
 
   useEffect(() => {
     const existingWindow = WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
@@ -398,27 +473,21 @@ export default function App() {
       setListeningState("listening");
       return;
     }
-
     if (micState === "processing") {
       setListeningState("processing");
       return;
     }
-
     if (micState === "error") {
       setListeningState("error");
       return;
     }
-
     if (micState === "idle" && listeningState === "listening") {
       setListeningState("idle");
     }
   }, [listeningState, micState]);
 
   useEffect(() => {
-    if (micState !== "success" || !transcript.trim()) {
-      return;
-    }
-
+    if (micState !== "success" || !transcript.trim()) return;
     void runSpeechSearch(transcript);
   }, [micState, runSpeechSearch, transcript]);
 
@@ -432,7 +501,6 @@ export default function App() {
         return "Verse Loaded";
       case "error":
         return "Error";
-      case "idle":
       default:
         return "Idle";
     }
@@ -440,7 +508,6 @@ export default function App() {
 
   const togglePresentationMode = useCallback(async () => {
     const root = document.documentElement;
-
     if (!document.fullscreenElement) {
       await root.requestFullscreen();
       setIsPresentationMode(true);
@@ -453,7 +520,6 @@ export default function App() {
 
   const handleOpenProjectorView = useCallback(async () => {
     const existing = WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
-
     if (existing) {
       projectorWindowRef.current = existing;
       setIsProjectorWindowOpen(true);
@@ -486,14 +552,13 @@ export default function App() {
       projectorWindow.once("tauri://error", (event) => {
         projectorWindowRef.current = null;
         setIsProjectorWindowOpen(false);
-        const errorMessage =
+        const msg =
           event.payload instanceof Error
             ? event.payload.message
             : typeof event.payload === "string"
               ? event.payload
               : JSON.stringify(event.payload ?? "Unknown projector error");
-        console.error("[projector] window open failed", event.payload);
-        setStatus(`Projector failed to open: ${errorMessage}`);
+        setStatus(`Projector failed to open: ${msg}`);
       });
 
       projectorWindow.once("tauri://close-requested", () => {
@@ -501,20 +566,13 @@ export default function App() {
         setIsProjectorWindowOpen(false);
       });
     } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : JSON.stringify(error ?? "Unknown projector error");
-      console.error("[projector] window creation threw", error);
-      setStatus(`Projector failed to open: ${errorMessage}`);
+      const msg = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
+      setStatus(`Projector failed to open: ${msg}`);
     }
   }, [projectorPayload]);
 
   const handleCloseProjectorView = useCallback(async () => {
     const target = projectorWindowRef.current ?? WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
-
     if (!target) {
       setIsProjectorWindowOpen(false);
       return;
@@ -526,9 +584,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isRestoringStartupState || startupRestoreStartedRef.current) {
-      return;
-    }
+    if (!isRestoringStartupState || startupRestoreStartedRef.current) return;
     startupRestoreStartedRef.current = true;
 
     const restoreOnStartup = async () => {
@@ -551,10 +607,7 @@ export default function App() {
   }, [handleOpenProjectorView, handleSearch, initialSettings, isRestoringStartupState]);
 
   useEffect(() => {
-    const onFullscreenChange = () => {
-      setIsPresentationMode(Boolean(document.fullscreenElement));
-    };
-
+    const onFullscreenChange = () => setIsPresentationMode(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", onFullscreenChange);
     return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
   }, []);
@@ -569,12 +622,10 @@ export default function App() {
           </div>
           <div className="topbar-actions">
             <div className="service-pill">{status}</div>
+            <div className="service-pill">Listening: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
+            <div className="service-pill">Display: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
             {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
-            <button
-              className="present-button"
-              onClick={() => void handleOpenProjectorView()}
-              disabled={isLoading}
-            >
+            <button className="present-button" onClick={() => void handleOpenProjectorView()} disabled={isLoading}>
               {isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}
             </button>
             {isProjectorWindowOpen ? (
@@ -582,11 +633,7 @@ export default function App() {
                 Close Projector View
               </button>
             ) : null}
-            <button
-              className="present-button"
-              onClick={() => void togglePresentationMode()}
-              disabled={isLoading}
-            >
+            <button className="present-button" onClick={() => void togglePresentationMode()} disabled={isLoading}>
               {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
             </button>
           </div>
@@ -601,9 +648,7 @@ export default function App() {
               </header>
 
               <div className="panel-card__body search-controls">
-                <label className="field-label" htmlFor="reference-input">
-                  Reference
-                </label>
+                <label className="field-label" htmlFor="reference-input">Reference</label>
                 <div className="search-row">
                   <input
                     id="reference-input"
@@ -614,13 +659,21 @@ export default function App() {
                     }}
                     placeholder="Genesis 1:1"
                   />
-                  <button
-                    className="run-search-button"
-                    onClick={() => void handleSearch()}
-                    disabled={isLoading}
-                  >
+                  <button className="run-search-button" onClick={() => void handleSearch()} disabled={isLoading}>
                     {isLoading ? "Searching..." : "Search"}
                   </button>
+                </div>
+
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="listening-mode-select">Listening mode</label>
+                  <select
+                    id="listening-mode-select"
+                    value={listeningMode}
+                    onChange={(e) => setListeningMode(e.target.value as ListeningMode)}
+                  >
+                    <option value="manual">Manual (operator confirms search)</option>
+                    <option value="auto">Auto (high-confidence spoken references present automatically)</option>
+                  </select>
                 </div>
 
                 <div className="mic-controls-row">
@@ -637,9 +690,7 @@ export default function App() {
                   >
                     {listening ? "Stop Listening" : "Start Listening"}
                   </button>
-                  <span className={`mic-state-chip mic-state-chip--${listeningState}`}>
-                    {listeningStateLabel}
-                  </span>
+                  <span className={`mic-state-chip mic-state-chip--${listeningState}`}>{listeningStateLabel}</span>
                 </div>
 
                 <MicrophoneMeter bars={bars} micState={micState} />
@@ -647,31 +698,27 @@ export default function App() {
                 {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
 
                 <div className="translation-row">
-                  <label className="field-label" htmlFor="translation-select">
-                    Translation
-                  </label>
-                  <select
-                    id="translation-select"
-                    value={selectedTranslation}
-                    onChange={(e) => setSelectedTranslation(e.target.value)}
-                  >
+                  <label className="field-label" htmlFor="translation-select">Translation</label>
+                  <select id="translation-select" value={selectedTranslation} onChange={(e) => setSelectedTranslation(e.target.value)}>
                     <option value="KJV">KJV</option>
                   </select>
                 </div>
 
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="display-mode-select">Display mode</label>
+                  <select id="display-mode-select" value={displayMode} onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}>
+                    <option value="fullscreen">Fullscreen</option>
+                    <option value="lower-third">Lower Third</option>
+                  </select>
+                </div>
+
                 <label className="inline-check">
-                  <input
-                    type="checkbox"
-                    checked={showPresentationReference}
-                    onChange={(e) => setShowPresentationReference(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={showPresentationReference} onChange={(e) => setShowPresentationReference(e.target.checked)} />
                   Show reference in presenter view
                 </label>
 
                 <div className="translation-row">
-                  <label className="field-label" htmlFor="reference-placement-select">
-                    Reference placement
-                  </label>
+                  <label className="field-label" htmlFor="reference-placement-select">Reference placement</label>
                   <select
                     id="reference-placement-select"
                     value={referencePlacement}
@@ -684,39 +731,100 @@ export default function App() {
                 </div>
 
                 <label className="inline-check">
-                  <input
-                    type="checkbox"
-                    checked={useSafeMargins}
-                    onChange={(e) => setUseSafeMargins(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={useSafeMargins} onChange={(e) => setUseSafeMargins(e.target.checked)} />
                   Use projector safe margins
                 </label>
 
                 <label className="inline-check">
-                  <input
-                    type="checkbox"
-                    checked={reopenProjectorOnLaunch}
-                    onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={reopenProjectorOnLaunch} onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)} />
                   Reopen projector window on startup
                 </label>
 
                 <div className="service-actions">
-                  <button
-                    className="present-button present-button--secondary"
-                    type="button"
-                    onClick={handleClearCurrentVerse}
-                  >
+                  <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>
                     Clear Current Verse
                   </button>
-                  <button
-                    className="present-button"
-                    type="button"
-                    onClick={handleRepresentCurrentVerse}
-                  >
+                  <button className="present-button" type="button" onClick={handleRepresentCurrentVerse}>
                     Re-present Current Verse
                   </button>
                 </div>
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Presentation Background</h2>
+                <p>Independent projector/presenter background controls for scripture readability.</p>
+              </header>
+              <div className="panel-card__body search-controls">
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="background-mode-select">Background style</label>
+                  <select
+                    id="background-mode-select"
+                    value={backgroundMode}
+                    onChange={(e) => setBackgroundMode(e.target.value as PresentationBackgroundMode)}
+                  >
+                    <option value="solid-dark">Solid dark</option>
+                    <option value="custom-image">Custom image</option>
+                  </select>
+                </div>
+                <div className="service-actions">
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void handlePickBackgroundImage()}>
+                    Choose Background Image
+                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={handleResetBackgroundImage}>
+                    Use Solid Dark
+                  </button>
+                </div>
+                <p className="session-notice">Current image: {customBackgroundPath ?? "None selected"}</p>
+                <label className="inline-check">
+                  <input
+                    type="checkbox"
+                    checked={blurBackgroundImage}
+                    onChange={(e) => setBlurBackgroundImage(e.target.checked)}
+                    disabled={backgroundMode !== "custom-image"}
+                  />
+                  Blur custom image for readability
+                </label>
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="background-dim-input">
+                    Image dim strength ({Math.round(backgroundDimStrength * 100)}%)
+                  </label>
+                  <input
+                    id="background-dim-input"
+                    type="range"
+                    min={0.2}
+                    max={0.9}
+                    step={0.05}
+                    value={backgroundDimStrength}
+                    disabled={backgroundMode !== "custom-image"}
+                    onChange={(e) => setBackgroundDimStrength(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header">
+                <h2>Software Theme</h2>
+                <p>Operator UI theme presets. These never change projector scripture backgrounds.</p>
+              </header>
+              <div className="panel-card__body search-controls">
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="software-theme-select">Theme</label>
+                  <select
+                    id="software-theme-select"
+                    value={softwareTheme}
+                    onChange={(e) => setSoftwareTheme(e.target.value as SoftwareTheme)}
+                  >
+                    {THEME_OPTIONS.map((theme) => (
+                      <option key={theme.value} value={theme.value}>{theme.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <p className="session-notice">
+                  {THEME_OPTIONS.find((theme) => theme.value === softwareTheme)?.description}
+                </p>
               </div>
             </section>
 
@@ -727,98 +835,47 @@ export default function App() {
               </header>
 
               <div className="panel-card__body">
-                <details
-                  className="quick-start"
-                  open={helpPanelExpanded}
-                  onToggle={(event) => setHelpPanelExpanded(event.currentTarget.open)}
-                >
+                <details className="quick-start" open={helpPanelExpanded} onToggle={(event) => setHelpPanelExpanded(event.currentTarget.open)}>
                   <summary>{helpPanelExpanded ? "Hide help panel" : "Show help panel"}</summary>
                   <ul>
                     <li><strong>Typing search:</strong> Enter a reference and press Enter or click Search.</li>
-                    <li><strong>Microphone mode:</strong> Click Start Listening, speak, then confirm or allow auto-search.</li>
-                    <li><strong>Projector view:</strong> Use Open Projector View to launch/focus the projector window.</li>
-                    <li><strong>Fullscreen:</strong> Use Present Fullscreen for confidence display and Exit when done.</li>
-                    <li><strong>Session exports:</strong> Use Export TXT or Export CSV in the Service Session Log panel.</li>
-                    <li><strong>Copy reference:</strong> Use Copy Current Reference to copy the active verse reference.</li>
+                    <li><strong>Listening modes:</strong> Manual captures references for review; Auto presents high-confidence spoken references.</li>
+                    <li><strong>Display modes:</strong> Toggle Fullscreen or Lower Third for projector/fullscreen output layout.</li>
+                    <li><strong>Backgrounds:</strong> Choose solid dark or custom image with optional blur/dim for readability.</li>
+                    <li><strong>Themes:</strong> Software themes style the operator console only, not projector scripture backgrounds.</li>
                   </ul>
                 </details>
               </div>
             </section>
 
             <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Speech Debug</h2>
-                <p>Shows transcript parsing, confidence, and ambiguity before auto-search.</p>
-              </header>
-
+              <header className="panel-card__header"><h2>Speech Debug</h2><p>Shows transcript parsing, confidence, and ambiguity before auto-search.</p></header>
               <div className="panel-card__body">
                 {speechDebug ? (
                   <dl className="debug-grid">
-                    <div>
-                      <dt>Heard transcript</dt>
-                      <dd>{speechDebug.rawTranscript}</dd>
-                    </div>
-                    <div>
-                      <dt>Matched book</dt>
-                      <dd>{speechDebug.canonicalBook ?? "Uncertain"}</dd>
-                    </div>
-                    <div>
-                      <dt>Normalized reference</dt>
-                      <dd>{speechDebug.normalizedReference}</dd>
-                    </div>
-                    <div>
-                      <dt>Confidence</dt>
-                      <dd>{(speechDebug.confidence * 100).toFixed(1)}%</dd>
-                    </div>
-                    <div>
-                      <dt>Ambiguity</dt>
-                      <dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Ambiguous - manual review"}</dd>
-                    </div>
-                    <div>
-                      <dt>Book source</dt>
-                      <dd>{speechDebug.debug.bookMatchSource}</dd>
-                    </div>
-                    {speechDebug.debug.reason ? (
-                      <div>
-                        <dt>Match note</dt>
-                        <dd>{speechDebug.debug.reason}</dd>
-                      </div>
-                    ) : null}
+                    <div><dt>Heard transcript</dt><dd>{speechDebug.rawTranscript}</dd></div>
+                    <div><dt>Matched book</dt><dd>{speechDebug.canonicalBook ?? "Uncertain"}</dd></div>
+                    <div><dt>Normalized reference</dt><dd>{speechDebug.normalizedReference}</dd></div>
+                    <div><dt>Confidence</dt><dd>{(speechDebug.confidence * 100).toFixed(1)}%</dd></div>
+                    <div><dt>Ambiguity</dt><dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Ambiguous - manual review"}</dd></div>
+                    <div><dt>Book source</dt><dd>{speechDebug.debug.bookMatchSource}</dd></div>
+                    {speechDebug.debug.reason ? <div><dt>Match note</dt><dd>{speechDebug.debug.reason}</dd></div> : null}
                   </dl>
-                ) : (
-                  <p className="history-empty">No speech transcript captured yet.</p>
-                )}
+                ) : <p className="history-empty">No speech transcript captured yet.</p>}
               </div>
             </section>
 
             <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Recent History</h2>
-                <p>Newest successful scripture loads appear first.</p>
-              </header>
-
+              <header className="panel-card__header"><h2>Recent History</h2><p>Newest successful scripture loads appear first.</p></header>
               <div className="panel-card__body">
-                {history.length === 0 ? (
-                  <p className="history-empty">No successful searches yet.</p>
-                ) : (
+                {history.length === 0 ? <p className="history-empty">No successful searches yet.</p> : (
                   <ul className="history-list">
                     {history.map((item, idx) => (
                       <li key={`${item.reference}-${idx}`}>
-                        <button
-                          className="history-list__item"
-                          onClick={() => setReference(item.reference)}
-                        >
+                        <button className="history-list__item" onClick={() => setReference(item.reference)}>
                           <span className="history-list__reference">{item.reference}</span>
-                          <span className="history-list__meta">
-                            {item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}
-                          </span>
-                          <span className="history-list__time">
-                            {new Date(item.timestampMs).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              second: "2-digit"
-                            })}
-                          </span>
+                          <span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span>
+                          <span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
                         </button>
                       </li>
                     ))}
@@ -828,81 +885,28 @@ export default function App() {
             </section>
 
             <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Service Session Log</h2>
-                <p>Chronological verses presented this service with one-click quick recall.</p>
-              </header>
-
+              <header className="panel-card__header"><h2>Service Session Log</h2><p>Chronological verses presented this service with one-click quick recall.</p></header>
               <div className="panel-card__body session-log-body">
                 <div className="session-log-actions session-log-actions--filters">
-                  <button
-                    className="present-button present-button--secondary"
-                    type="button"
-                    onClick={() => void exportSessionLog("txt")}
-                  >
-                    Export TXT
-                  </button>
-                  <button
-                    className="present-button present-button--secondary"
-                    type="button"
-                    onClick={() => void exportSessionLog("csv")}
-                  >
-                    Export CSV
-                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("txt")}>Export TXT</button>
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("csv")}>Export CSV</button>
                 </div>
                 <div className="session-log-actions">
-                  <button
-                    className={`present-button present-button--secondary ${sessionLogFilter === "all" ? "present-button--active" : ""}`}
-                    type="button"
-                    onClick={() => setSessionLogFilter("all")}
-                  >
-                    All
-                  </button>
-                  <button
-                    className={`present-button present-button--secondary ${sessionLogFilter === "typed" ? "present-button--active" : ""}`}
-                    type="button"
-                    onClick={() => setSessionLogFilter("typed")}
-                  >
-                    Typed
-                  </button>
-                  <button
-                    className={`present-button present-button--secondary ${sessionLogFilter === "spoken" ? "present-button--active" : ""}`}
-                    type="button"
-                    onClick={() => setSessionLogFilter("spoken")}
-                  >
-                    Spoken
-                  </button>
+                  <button className={`present-button present-button--secondary ${sessionLogFilter === "all" ? "present-button--active" : ""}`} type="button" onClick={() => setSessionLogFilter("all")}>All</button>
+                  <button className={`present-button present-button--secondary ${sessionLogFilter === "typed" ? "present-button--active" : ""}`} type="button" onClick={() => setSessionLogFilter("typed")}>Typed</button>
+                  <button className={`present-button present-button--secondary ${sessionLogFilter === "spoken" ? "present-button--active" : ""}`} type="button" onClick={() => setSessionLogFilter("spoken")}>Spoken</button>
                 </div>
                 <div className="session-log-actions">
-                  <button
-                    className="present-button present-button--secondary"
-                    type="button"
-                    onClick={() => void handleCopyCurrentReference()}
-                  >
-                    Copy Current Reference
-                  </button>
-                  <button
-                    className="present-button present-button--secondary"
-                    type="button"
-                    onClick={handleClearSessionLog}
-                  >
-                    Clear Session Log
-                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
+                  <button className="present-button present-button--secondary" type="button" onClick={handleClearSessionLog}>Clear Session Log</button>
                 </div>
                 {sessionNotice ? <p className="session-notice">{sessionNotice}</p> : null}
 
-                {sessionLog.length === 0 ? (
-                  <p className="history-empty">No verses presented in this session yet.</p>
-                ) : filteredSessionLog.length === 0 ? (
-                  <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p>
-                ) : (
+                {sessionLog.length === 0 ? <p className="history-empty">No verses presented in this session yet.</p> : filteredSessionLog.length === 0 ? <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p> : (
                   <ol className="session-log-list" aria-label="Service session log">
                     {filteredSessionLog.map((entry) => (
                       <li key={entry.id}>
-                        <button
-                          className="history-list__item"
-                          onClick={() => void handleRecallSessionEntry(entry)}
-                        >
+                        <button className="history-list__item" onClick={() => void handleRecallSessionEntry(entry)}>
                           <span className="history-list__reference">{entry.reference}</span>
                           <span className="history-list__meta">Source: {entry.sourceType}</span>
                           <span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span>
@@ -917,73 +921,50 @@ export default function App() {
 
           <div className="workspace-column">
             <section className="panel-card preview-card">
-              <header className="panel-card__header">
-                <h2>Verse Preview</h2>
-                <p>Large-format text for confidence monitor and projection checks.</p>
-              </header>
-
-              <div className="panel-card__body">
-                <pre className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}>{verseText}</pre>
-              </div>
+              <header className="panel-card__header"><h2>Verse Preview</h2><p>Large-format text for confidence monitor and projection checks.</p></header>
+              <div className="panel-card__body"><pre className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}>{verseText}</pre></div>
             </section>
 
             <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Metadata</h2>
-                <p>Quick validation details for the currently loaded passage.</p>
-              </header>
-
+              <header className="panel-card__header"><h2>Metadata</h2><p>Quick validation details for the currently loaded passage.</p></header>
               <div className="panel-card__body">
                 <dl className="metadata-grid">
-                  <div>
-                    <dt>Reference</dt>
-                    <dd>{result.reference}</dd>
-                  </div>
-                  <div>
-                    <dt>Translation</dt>
-                    <dd>{result.translation}</dd>
-                  </div>
-                  <div>
-                    <dt>Theme</dt>
-                    <dd>{result.theme}</dd>
-                  </div>
-                  <div>
-                    <dt>Status</dt>
-                    <dd>{result.found ? "Loaded" : "No Result"}</dd>
-                  </div>
+                  <div><dt>Reference</dt><dd>{result.reference}</dd></div>
+                  <div><dt>Translation</dt><dd>{result.translation}</dd></div>
+                  <div><dt>Theme</dt><dd>{result.theme}</dd></div>
+                  <div><dt>Status</dt><dd>{result.found ? "Loaded" : "No Result"}</dd></div>
                 </dl>
               </div>
             </section>
 
             <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Canonical Book Coverage</h2>
-                <p>Configured spoken-book dictionary for all supported KJV books.</p>
-              </header>
-              <div className="panel-card__body">
-                <p className="coverage-count">{CANONICAL_BOOK_DICTIONARY.length} books configured.</p>
-              </div>
+              <header className="panel-card__header"><h2>Canonical Book Coverage</h2><p>Configured spoken-book dictionary for all supported KJV books.</p></header>
+              <div className="panel-card__body"><p className="coverage-count">{CANONICAL_BOOK_DICTIONARY.length} books configured.</p></div>
             </section>
           </div>
         </div>
       </div>
 
       {isPresentationMode ? (
-        <section className="presentation-mode" aria-live="polite">
-          <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>
-            Exit Fullscreen
-          </button>
-          <div className={`presentation-mode__content ${useSafeMargins ? "presentation-mode__content--safe" : ""}`}>
+        <section className={`presentation-mode presentation-mode--${displayMode}`} aria-live="polite">
+          {backgroundMode === "custom-image" && customBackgroundSource ? (
+            <div
+              className={`presentation-background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
+              style={{ backgroundImage: `url(${customBackgroundSource})` }}
+              aria-hidden="true"
+            />
+          ) : null}
+          <div
+            className="presentation-background__dim"
+            style={{ opacity: backgroundMode === "custom-image" ? backgroundDimStrength : 0.35 }}
+            aria-hidden="true"
+          />
+          <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>
+          <div className={`presentation-mode__content presentation-mode__content--${displayMode} ${useSafeMargins ? "presentation-mode__content--safe" : ""}`}>
             {showPresentationReference ? (
-              <p
-                className={`presentation-mode__reference presentation-mode__reference--${referencePlacement}`}
-              >
-                {result.reference}
-              </p>
+              <p className={`presentation-mode__reference presentation-mode__reference--${referencePlacement}`}>{result.reference}</p>
             ) : null}
-            <pre className={`presentation-mode__verse ${result.found ? "" : "presentation-mode__verse--empty"}`}>
-              {verseText}
-            </pre>
+            <pre className={`presentation-mode__verse ${result.found ? "" : "presentation-mode__verse--empty"}`}>{verseText}</pre>
           </div>
         </section>
       ) : null}
