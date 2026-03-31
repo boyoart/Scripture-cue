@@ -99,6 +99,20 @@ button, input, select { font: inherit; }
 h1 { margin: 0; font-size: 1.7rem; }
 .topbar-actions { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; justify-content: flex-end; }
 .service-pill { border: 1px solid var(--border-soft); background: var(--pill-bg); color: var(--pill-text); padding: .4rem .75rem; border-radius: 999px; font-size: .8rem; }
+.service-pill--detection { display:flex; align-items:center; gap:.42rem; border-color: rgba(230, 179, 66, .6); }
+.detection-dot {
+  width: .54rem;
+  height: .54rem;
+  border-radius: 999px;
+  background: #f4c84c;
+  box-shadow: 0 0 0 0 rgba(244, 200, 76, .85);
+  animation: detectionPulse .62s ease-out;
+}
+@keyframes detectionPulse {
+  0% { transform: scale(.76); box-shadow: 0 0 0 0 rgba(244, 200, 76, .85); }
+  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(244, 200, 76, 0); }
+  100% { transform: scale(.98); box-shadow: 0 0 0 0 rgba(244, 200, 76, 0); }
+}
 
 .present-button, .run-search-button, .mic-toggle-button {
   border: 1px solid var(--button-border);
