@@ -48,7 +48,16 @@ type HistoryItem = {
   repeats: number;
 };
 
-type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "waiting_for_speech" | "error";
+type ListeningPersistentMode = "off" | "manual_active" | "auto_active";
+type ListeningWorkflowState =
+  | "idle"
+  | "listening"
+  | "hearing_speech"
+  | "processing"
+  | "verse_loaded"
+  | "waiting_for_speech"
+  | "retry"
+  | "error";
 type SessionLogFilter = "all" | "typed" | "spoken";
 type DetectionSignalSource = "final" | "interim";
 type HistoryPanelTab = "recent-history" | "session-log";
@@ -114,6 +123,7 @@ export default function App() {
   const [speechNotice, setSpeechNotice] = useState<string | null>(null);
   const [speechDebug, setSpeechDebug] = useState<NormalizedResult | null>(null);
   const [listeningState, setListeningState] = useState<ListeningWorkflowState>("idle");
+  const [persistentListeningMode, setPersistentListeningMode] = useState<ListeningPersistentMode>("off");
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [showPresentationReference, setShowPresentationReference] = useState(initialSettings.showPresentationReference);
   const [referencePlacement, setReferencePlacement] = useState<ReferencePlacement>(initialSettings.referencePlacement);
@@ -149,7 +159,8 @@ export default function App() {
   const interimCaptureRef = useRef<{ transcript: string; normalizedReference: string; timestampMs: number } | null>(null);
   const autoBookAnchorRef = useRef<{ canonicalBook: string; timestampMs: number } | null>(null);
   const [detectionPulseKey, setDetectionPulseKey] = useState(0);
-  const { bars, micState, transcript, errorMessage, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
+  const { bars, micState, transcript, errorMessage, lastErrorCode, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
+  const isListeningModeActive = persistentListeningMode !== "off";
 
   const verseText = useMemo(() => {
     if (!result.found || result.verses.length === 0) {
@@ -476,12 +487,14 @@ export default function App() {
   const handleStartListening = useCallback(async () => {
     setSpeechNotice(null);
     setListeningState("listening");
+    setPersistentListeningMode(listeningMode === "auto" ? "auto_active" : "manual_active");
     autoListeningSessionRef.current = listeningMode === "auto";
     await startListening();
   }, [listeningMode, startListening]);
 
   const handleStopListening = useCallback(() => {
     autoListeningSessionRef.current = false;
+    setPersistentListeningMode("off");
     stopListening("idle");
     setListeningState("idle");
     setStatus("Listening stopped");
@@ -788,8 +801,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isListeningModeActive) {
+      setListeningState("idle");
+      return;
+    }
     if (micState === "listening") {
-      setListeningState("listening");
+      setListeningState(transcript.trim() ? "hearing_speech" : "listening");
       return;
     }
     if (micState === "processing") {
@@ -800,10 +817,10 @@ export default function App() {
       setListeningState("error");
       return;
     }
-    if (micState === "idle" && listeningState === "listening") {
+    if (micState === "idle" && (listeningState === "listening" || listeningState === "hearing_speech")) {
       setListeningState("waiting_for_speech");
     }
-  }, [listeningState, micState]);
+  }, [isListeningModeActive, listeningState, micState, transcript]);
 
   useEffect(() => {
     if (micState !== "success") return;
@@ -845,9 +862,10 @@ export default function App() {
       return;
     }
     if (lastStopReason === "no-speech" || lastStopReason === "interrupted") {
-      setListeningState("waiting_for_speech");
+      setListeningState("retry");
       setSpeechNotice(lastStopReason === "no-speech" ? "No speech detected; still listening in Auto mode." : "Recognition interrupted; retrying Auto listening.");
       const retryId = window.setTimeout(() => {
+        setListeningState("waiting_for_speech");
         void startListening();
       }, 320);
       return () => window.clearTimeout(retryId);
@@ -857,21 +875,41 @@ export default function App() {
   useEffect(() => {
     if (listeningMode !== "auto") {
       autoListeningSessionRef.current = false;
+      setPersistentListeningMode((previous) => (previous === "off" ? "off" : "manual_active"));
     } else if (listening) {
       autoListeningSessionRef.current = true;
+      setPersistentListeningMode("auto_active");
     }
   }, [listening, listeningMode]);
+
+  useEffect(() => {
+    if (!isListeningModeActive) {
+      return;
+    }
+    if (
+      micState === "error" &&
+      (lastStopReason === "fatal" || lastErrorCode === "not-allowed" || lastErrorCode === "service-not-allowed" || lastErrorCode === "audio-capture")
+    ) {
+      autoListeningSessionRef.current = false;
+      setPersistentListeningMode("off");
+      setStatus("Listening stopped due to microphone/permission failure");
+    }
+  }, [isListeningModeActive, lastErrorCode, lastStopReason, micState]);
 
   const listeningStateLabel = useMemo(() => {
     switch (listeningState) {
       case "listening":
         return "Listening";
+      case "hearing_speech":
+        return "Hearing speech";
       case "processing":
         return "Processing";
       case "verse_loaded":
         return "Verse Loaded";
       case "waiting_for_speech":
         return "Waiting for speech";
+      case "retry":
+        return "Retry";
       case "error":
         return "Error";
       default:
@@ -1031,7 +1069,7 @@ export default function App() {
 
       if (key === "m" && !event.shiftKey) {
         event.preventDefault();
-        if (listening) {
+        if (isListeningModeActive) {
           handleStopListening();
         } else {
           void handleStartListening();
@@ -1097,7 +1135,7 @@ export default function App() {
     handleSearch,
     handleStartListening,
     handleStopListening,
-    listening,
+    isListeningModeActive,
     toggleAutoListeningMode,
     toggleDisplayMode,
     togglePresentationMode
@@ -1165,9 +1203,9 @@ export default function App() {
 
                 <div className="mic-controls-row">
                   <button
-                    className={`mic-toggle-button ${listening ? "mic-toggle-button--live" : ""}`}
+                    className={`mic-toggle-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
                     onClick={() => {
-                      if (listening) {
+                      if (isListeningModeActive) {
                         handleStopListening();
                       } else {
                         void handleStartListening();
@@ -1175,7 +1213,7 @@ export default function App() {
                     }}
                     disabled={isLoading}
                   >
-                    {listening ? "Stop Listening" : "Start Listening"}
+                    {isListeningModeActive ? "Stop Listening" : "Start Listening"}
                   </button>
                   <span className={`mic-state-chip mic-state-chip--${listeningState}`}>{listeningStateLabel}</span>
                 </div>
@@ -1220,17 +1258,17 @@ export default function App() {
                     <button className="present-button" type="button" onClick={handleRepresentCurrentVerse}>Re-present Verse</button>
                     <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>Clear Verse</button>
                     <button
-                      className={`present-button ${listening ? "mic-toggle-button--live" : ""}`}
+                      className={`present-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
                       type="button"
                       onClick={() => {
-                        if (listening) {
+                        if (isListeningModeActive) {
                           handleStopListening();
                         } else {
                           void handleStartListening();
                         }
                       }}
                     >
-                      {listening ? "Stop Listening" : "Start Listening"}
+                      {isListeningModeActive ? "Stop Listening" : "Start Listening"}
                     </button>
                     <button className="present-button present-button--secondary" type="button" onClick={() => void toggleProjectorView()}>
                       {isProjectorWindowOpen ? "Hide Projector" : "Show Projector"}
