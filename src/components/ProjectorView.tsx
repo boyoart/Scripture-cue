@@ -136,11 +136,10 @@ export default function ProjectorView() {
       className="projector-screen"
       aria-live="polite"
       data-background-received={String(Boolean(backgroundImageSrc))}
-      style={projectorBackgroundStyle}
     >
-      {backgroundImageSrc && state.blurBackgroundImage ? (
+      {backgroundImageSrc ? (
         <div
-          className={`presentation-background presentation-background--projector ${state.blurBackgroundImage ? "presentation-background--blur" : ""}`}
+          className={`presentation-background presentation-background--image presentation-background--projector ${state.blurBackgroundImage ? "presentation-background--blur" : ""}`}
           style={projectorBackgroundStyle}
           aria-hidden="true"
         />

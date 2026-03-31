@@ -57,6 +57,7 @@ const SIMPLE_NUMBERS: Record<string, number> = {
 };
 
 const RANGE_JOINERS = new Set(["to", "through", "thru", "-"]);
+const NUMBER_WORD_REGEX = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|first|second|third)\b/;
 
 function sanitizeTranscript(input: string): string {
   return input
@@ -66,7 +67,7 @@ function sanitizeTranscript(input: string): string {
     .replace(/\bchapter\s*(\d+)/g, " chapter $1 ")
     .replace(/\bverse\s*(\d+)/g, " verse $1 ")
     .replace(/\bverses\s*(\d+)/g, " verse $1 ")
-    .replace(/\b(and|then|please|find|show|me|the)\b/g, " ")
+    .replace(/\b(open|to|the|book|of|and|then|please|find|show|me)\b/g, " ")
     .replace(/\bchapter\b/g, " chapter ")
     .replace(/\bverses?\b/g, " verse ")
     .replace(/\bcolon\b/g, " : ")
@@ -74,6 +75,43 @@ function sanitizeTranscript(input: string): string {
     .replace(/\s+-\s+/g, " - ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+type BookMatchAtOffset = MatchResult & { offset: number };
+
+function hasReferenceLikeNumbers(value: string): boolean {
+  return /\d/.test(value) || NUMBER_WORD_REGEX.test(value);
+}
+
+function findBookMatchInTranscript(cleaned: string): BookMatchAtOffset {
+  const tokens = cleaned.split(" ").filter(Boolean);
+  let best: BookMatchAtOffset = {
+    consumedTokenCount: 0,
+    confidence: 0,
+    ambiguous: true,
+    source: "none",
+    reason: "No scripture-like candidate detected",
+    offset: 0
+  };
+
+  for (let offset = 0; offset < tokens.length; offset += 1) {
+    const candidateTranscript = tokens.slice(offset).join(" ");
+    const match = matchSpokenBook(candidateTranscript);
+    if (!match.canonicalBook || match.consumedTokenCount === 0) {
+      continue;
+    }
+
+    const trailing = tokens.slice(offset + match.consumedTokenCount).join(" ").trim();
+    if (!hasReferenceLikeNumbers(trailing)) {
+      continue;
+    }
+
+    if (!best.canonicalBook || match.confidence > best.confidence) {
+      best = { ...match, offset };
+    }
+  }
+
+  return best;
 }
 
 function parseNumericToken(token: string): number | null {
@@ -257,7 +295,7 @@ function parseReferenceParts(remaining: string): {
 
 export function normalizeTranscriptToReference(rawTranscript: string, translationCode: string): NormalizedResult {
   const cleaned = sanitizeTranscript(rawTranscript);
-  const bookMatch = matchSpokenBook(cleaned);
+  const bookMatch = findBookMatchInTranscript(cleaned);
 
   if (!bookMatch.canonicalBook || bookMatch.consumedTokenCount === 0) {
     return {
@@ -281,7 +319,7 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
   }
 
   const cleanedTokens = cleaned.split(" ").filter(Boolean);
-  const remainder = cleanedTokens.slice(bookMatch.consumedTokenCount).join(" ").trim();
+  const remainder = cleanedTokens.slice(bookMatch.offset + bookMatch.consumedTokenCount).join(" ").trim();
   const parts = parseReferenceParts(remainder);
   const recognizedVerses = parts.verseStart ? 0.16 : 0;
   const recognizedRange = parts.verseEnd ? 0.08 : 0;
