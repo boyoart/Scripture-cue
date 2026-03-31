@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
 import { getPresentationFontCssFamily } from "../features/display/presentationStyling";
+import PresentationSurface from "./PresentationSurface";
 import {
   getProjectorStorageKey,
   PROJECTOR_STATE_EVENT,
@@ -57,19 +58,6 @@ const EMPTY_STATE: ProjectorViewState = {
   projectionLineHeight: 1.5
 };
 
-function buildBackgroundImageStyle(source: string | null): CSSProperties | undefined {
-  if (!source) {
-    return undefined;
-  }
-
-  return {
-    backgroundImage: `url("${source}")`,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat"
-  };
-}
-
 export default function ProjectorView() {
   const [state, setState] = useState<ProjectorViewState>(() => {
     const persisted = readProjectorState();
@@ -121,7 +109,6 @@ export default function ProjectorView() {
     return state.customBackgroundSource;
   }, [state.backgroundMode, state.customBackgroundSource]);
 
-  const projectorBackgroundStyle = useMemo(() => buildBackgroundImageStyle(backgroundImageSrc), [backgroundImageSrc]);
   const dimOpacity = state.backgroundMode === "custom-image" ? Math.min(state.backgroundDimStrength, 0.8) : 0.35;
 
   useEffect(() => {
@@ -134,43 +121,34 @@ export default function ProjectorView() {
   }, [backgroundImageSrc, state.backgroundMode, state.customBackgroundPath]);
 
   return (
-    <main
+    <PresentationSurface
+      as="main"
       className="projector-screen"
-      aria-live="polite"
-      data-background-received={String(Boolean(backgroundImageSrc))}
-      style={projectorBackgroundStyle}
+      contentClassName={`projector-screen__content projector-screen__content--${state.displayMode} ${state.useSafeMargins ? "projector-screen__content--safe" : ""}`}
+      backgroundMode={state.backgroundMode}
+      backgroundSource={backgroundImageSrc}
+      blurBackgroundImage={state.blurBackgroundImage}
+      dimOpacity={dimOpacity}
+      containerProps={{
+        "aria-live": "polite",
+        "data-background-received": String(Boolean(backgroundImageSrc))
+      }}
     >
-      {backgroundImageSrc ? (
-        <div
-          className={`presentation-background presentation-background--image presentation-background--projector ${state.blurBackgroundImage ? "presentation-background--blur" : ""}`}
-          style={projectorBackgroundStyle}
-          aria-hidden="true"
-        />
+      {state.showReference ? (
+        <p className={`projector-screen__reference projector-screen__reference--${state.referencePlacement}`}>
+          {state.result.reference}
+        </p>
       ) : null}
-      <div
-        className="presentation-background__dim"
-        style={{ opacity: dimOpacity }}
-        aria-hidden="true"
-      />
-      <div
-        className={`projector-screen__content projector-screen__content--${state.displayMode} ${state.useSafeMargins ? "projector-screen__content--safe" : ""}`}
+      <pre
+        className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}
+        style={{
+          fontFamily: getPresentationFontCssFamily(state.projectionFontFamily),
+          fontSize: `${state.projectionFontSizePx}px`,
+          lineHeight: state.projectionLineHeight
+        }}
       >
-        {state.showReference ? (
-          <p className={`projector-screen__reference projector-screen__reference--${state.referencePlacement}`}>
-            {state.result.reference}
-          </p>
-        ) : null}
-        <pre
-          className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}
-          style={{
-            fontFamily: getPresentationFontCssFamily(state.projectionFontFamily),
-            fontSize: `${state.projectionFontSizePx}px`,
-            lineHeight: state.projectionLineHeight
-          }}
-        >
-          {verseText}
-        </pre>
-      </div>
-    </main>
+        {verseText}
+      </pre>
+    </PresentationSurface>
   );
 }

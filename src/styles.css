@@ -170,11 +170,9 @@ input[type="range"] { padding: 0; }
 .history-list__time { grid-column:2; grid-row:1/span 2; align-self:center; }
 
 .preview-card { flex:1; }
-.verse-preview-shell { min-height: 520px; height: 100%; border:1px solid color-mix(in srgb, var(--border-soft), transparent 25%); border-radius:12px; background:rgba(0,0,0,.18); position: relative; overflow: hidden; }
-.verse-preview-shell--image { background:#02040d; }
-.verse-preview__background { position: absolute; inset: 0; transform: scale(1.03); }
-.verse-preview__dim { z-index: 1; }
-.verse-preview { min-height:520px; margin:0; border:0; background:transparent; border-radius:12px; padding:1.4rem; font-size:1.4rem; line-height:1.8; white-space:pre-line; position: relative; z-index: 2; color: #eef2ff; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
+.verse-preview-shell { min-height: 520px; height: 100%; border:1px solid color-mix(in srgb, var(--border-soft), transparent 25%); border-radius:12px; overflow: hidden; }
+.verse-preview-shell__content { min-height:520px; }
+.verse-preview { min-height:520px; margin:0; border:0; background:transparent; border-radius:12px; padding:1.4rem; font-size:1.4rem; line-height:1.8; white-space:pre-line; color: #eef2ff; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
 .verse-preview--empty { color:var(--text-muted); }
 .metadata-strip-card { padding-top: .45rem; padding-bottom: .55rem; }
 .metadata-strip-card .panel-card__body { margin-top: 0; }
@@ -230,21 +228,48 @@ input[type="range"] { padding: 0; }
   gap: .8rem;
 }
 
+.presentation-surface {
+  position: relative;
+  isolation: isolate;
+}
+.presentation-surface__background-layer,
+.presentation-surface__overlay-layer {
+  position: absolute;
+  inset: 0;
+}
+.presentation-surface__background-layer {
+  z-index: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transform: scale(1.03);
+}
+.presentation-surface__background-layer--solid {
+  background-color: #02040d;
+}
+.presentation-surface__background-layer--blur {
+  filter: blur(10px);
+}
+.presentation-surface__overlay-layer {
+  z-index: 1;
+  background: #000;
+  pointer-events: none;
+}
+.presentation-surface__content-layer {
+  z-index: 2;
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+}
+
 .presentation-mode, .projector-screen {
-  min-height: 100vh; position: fixed; inset: 0; z-index: 40; background-color: #02040d; color: #fff; display: flex; align-items: center; justify-content: center; padding: 4rem;
+  min-height: 100vh; position: fixed; inset: 0; z-index: 40; color: #fff; display: flex; align-items: center; justify-content: center; padding: 4rem;
 }
 .projector-screen { position: relative; }
-.presentation-background {
-  position: absolute; inset: 0; background-position: center; background-size: cover; background-repeat: no-repeat; transform: scale(1.03); z-index: 0;
-}
-.presentation-background--image { z-index: 0; }
-.presentation-background--blur { filter: blur(10px); }
-.presentation-background--projector { position: fixed; }
-.presentation-background__dim { position: absolute; inset: 0; background: #000; z-index: 1; pointer-events: none; }
 
 .presentation-mode__content,
 .projector-screen__content {
-  width: min(1600px, 100%); display: flex; flex-direction: column; gap: 1.5rem; position: relative; z-index: 2;
+  width: min(1600px, 100%); display: flex; flex-direction: column; gap: 1.5rem;
 }
 .presentation-mode__content--safe, .projector-screen__content--safe { padding: clamp(1rem,2.2vh,2.2rem) clamp(1.2rem,3vw,3rem); }
 

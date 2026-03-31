@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/api/dialog";
@@ -6,6 +6,7 @@ import { writeTextFile } from "@tauri-apps/api/fs";
 import { writeText } from "@tauri-apps/api/clipboard";
 import { searchKjv, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
+import PresentationSurface from "./components/PresentationSurface";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
 import { CANONICAL_BOOK_DICTIONARY } from "./features/parser/spokenBookMatcher";
 import { useSpeechMeter } from "./features/speech/useSpeechMeter";
@@ -57,19 +58,6 @@ const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
 const AUTO_MEDIUM_CONFIDENCE = 0.68;
 const AUTO_HIGH_PRIORITY_CONFIDENCE = 0.78;
 const AUTO_FINAL_CONFIDENCE = 0.82;
-
-function buildBackgroundImageStyle(source: string | null): CSSProperties | undefined {
-  if (!source) {
-    return undefined;
-  }
-
-  return {
-    backgroundImage: `url("${source}")`,
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundRepeat: "no-repeat"
-  };
-}
 
 const EMPTY_RESULT: SearchResult = {
   found: false,
@@ -147,8 +135,6 @@ export default function App() {
 
   const customBackgroundSource = useMemo(() => getBackgroundImageSource(customBackgroundPath), [customBackgroundPath]);
   const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
-  const presentationBackgroundStyle = useMemo(() => buildBackgroundImageStyle(customBackgroundSource), [customBackgroundSource]);
-  const versePreviewShellStyle = useMemo(() => buildBackgroundImageStyle(hasCustomPresentationBackground ? customBackgroundSource : null), [customBackgroundSource, hasCustomPresentationBackground]);
   const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const fullscreenDimOpacity = backgroundMode === "custom-image" ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const isVersePreviewUsingCustomImage = hasCustomPresentationBackground;
@@ -198,14 +184,6 @@ export default function App() {
     ]
   );
   const presentationState = projectorPayload;
-  const fullscreenBackgroundStyle = useMemo(
-    () =>
-      buildBackgroundImageStyle(
-        presentationState.backgroundMode === "custom-image" ? presentationState.customBackgroundSource : null
-      ),
-    [presentationState.backgroundMode, presentationState.customBackgroundSource]
-  );
-
   useEffect(() => {
     if (backgroundMode !== "custom-image") {
       return;
@@ -983,30 +961,23 @@ export default function App() {
             <section className="panel-card preview-card">
               <header className="panel-card__header"><h2>Verse Preview</h2><p>Large-format text for confidence monitor and projection checks.</p></header>
               <div className="panel-card__body">
-                <div
+                <PresentationSurface
+                  as="div"
                   className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
-                  data-background-received={String(hasCustomPresentationBackground)}
-                  style={versePreviewShellStyle}
+                  contentClassName="verse-preview-shell__content"
+                  backgroundMode={backgroundMode}
+                  backgroundSource={customBackgroundSource}
+                  blurBackgroundImage={blurBackgroundImage}
+                  dimOpacity={previewDimOpacity}
+                  containerProps={{ "data-background-received": String(hasCustomPresentationBackground) }}
                 >
-                  {hasCustomPresentationBackground ? (
-                    <div
-                      className={`presentation-background presentation-background--image verse-preview__background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
-                      style={presentationBackgroundStyle}
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                  <div
-                    className="presentation-background__dim verse-preview__dim"
-                    style={{ opacity: previewDimOpacity }}
-                    aria-hidden="true"
-                  />
                   <pre
                     className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}
                     style={{ fontFamily: getPresentationFontCssFamily(previewFontFamily), fontSize: `${previewFontSizePx}px` }}
                   >
                     {verseText}
                   </pre>
-                </div>
+                </PresentationSurface>
               </div>
             </section>
 
@@ -1283,39 +1254,31 @@ export default function App() {
       ) : null}
 
       {isPresentationMode ? (
-        <section
+        <PresentationSurface
+          as="section"
           className={`presentation-mode presentation-mode--${displayMode}`}
-          aria-live="polite"
+          contentClassName={`presentation-mode__content presentation-mode__content--${presentationState.displayMode} ${presentationState.useSafeMargins ? "presentation-mode__content--safe" : ""}`}
+          backgroundMode={presentationState.backgroundMode}
+          backgroundSource={presentationState.customBackgroundSource}
+          blurBackgroundImage={presentationState.blurBackgroundImage}
+          dimOpacity={fullscreenDimOpacity}
+          containerProps={{ "aria-live": "polite" }}
         >
-          {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource ? (
-            <div
-              className={`presentation-background presentation-background--image ${presentationState.blurBackgroundImage ? "presentation-background--blur" : ""}`}
-              style={fullscreenBackgroundStyle}
-              aria-hidden="true"
-            />
-          ) : null}
-          <div
-            className="presentation-background__dim"
-            style={{ opacity: fullscreenDimOpacity }}
-            aria-hidden="true"
-          />
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>
-          <div className={`presentation-mode__content presentation-mode__content--${presentationState.displayMode} ${presentationState.useSafeMargins ? "presentation-mode__content--safe" : ""}`}>
-            {presentationState.showReference ? (
-              <p className={`presentation-mode__reference presentation-mode__reference--${presentationState.referencePlacement}`}>{presentationState.result.reference}</p>
-            ) : null}
-            <pre
-              className={`presentation-mode__verse ${presentationState.result.found ? "" : "presentation-mode__verse--empty"}`}
-              style={{
-                fontFamily: getPresentationFontCssFamily(presentationState.projectionFontFamily),
-                fontSize: `${presentationState.projectionFontSizePx}px`,
-                lineHeight: presentationState.projectionLineHeight
-              }}
-            >
-              {presentationState.verseText}
-            </pre>
-          </div>
-        </section>
+          {presentationState.showReference ? (
+            <p className={`presentation-mode__reference presentation-mode__reference--${presentationState.referencePlacement}`}>{presentationState.result.reference}</p>
+          ) : null}
+          <pre
+            className={`presentation-mode__verse ${presentationState.result.found ? "" : "presentation-mode__verse--empty"}`}
+            style={{
+              fontFamily: getPresentationFontCssFamily(presentationState.projectionFontFamily),
+              fontSize: `${presentationState.projectionFontSizePx}px`,
+              lineHeight: presentationState.projectionLineHeight
+            }}
+          >
+            {presentationState.verseText}
+          </pre>
+        </PresentationSurface>
       ) : null}
     </>
   );
