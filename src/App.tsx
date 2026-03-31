@@ -876,36 +876,26 @@ export default function App() {
             <h1>Presentation Operator Console</h1>
           </div>
           <div className="topbar-actions">
-            <div className="service-pill">{status}</div>
+            <div className="service-pill">Status: {status}</div>
+            <div className="service-pill">Listening State: {listeningStateLabel}</div>
             <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
               <span className="detection-dot" aria-hidden="true" />
-              Scripture detection
+              Detection Ready
             </div>
-            <div className="service-pill">Listening: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
-            <div className="service-pill">Display: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
+            <div className="service-pill">Listening Mode: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
+            <div className="service-pill">Display Mode: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
             {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
+            <button className="present-button" onClick={() => void handleOpenProjectorView()} disabled={isLoading}>
+              {isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}
+            </button>
+            <button className="present-button" onClick={() => void togglePresentationMode()} disabled={isLoading}>
+              {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
+            </button>
             <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>
               Settings
             </button>
             <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("history")}>
               History / Session
-            </button>
-            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("help")}>
-              Help
-            </button>
-            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("debug")}>
-              Debug
-            </button>
-            <button className="present-button" onClick={() => void handleOpenProjectorView()} disabled={isLoading}>
-              {isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}
-            </button>
-            {isProjectorWindowOpen ? (
-              <button className="present-button present-button--secondary" onClick={() => void handleCloseProjectorView()}>
-                Close Projector View
-              </button>
-            ) : null}
-            <button className="present-button" onClick={() => void togglePresentationMode()} disabled={isLoading}>
-              {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
             </button>
           </div>
         </header>
@@ -962,6 +952,20 @@ export default function App() {
                     <option value="KJV">KJV</option>
                   </select>
                 </div>
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="display-mode-select-inline">Display mode</label>
+                  <select id="display-mode-select-inline" value={displayMode} onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}>
+                    <option value="fullscreen">Fullscreen</option>
+                    <option value="lower-third">Lower Third</option>
+                  </select>
+                </div>
+                <div className="translation-row">
+                  <label className="field-label" htmlFor="listening-mode-select-inline">Listening mode</label>
+                  <select id="listening-mode-select-inline" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
+                    <option value="manual">Manual</option>
+                    <option value="auto">Auto</option>
+                  </select>
+                </div>
 
                 <div className="service-actions">
                   <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>
@@ -1006,21 +1010,7 @@ export default function App() {
               </div>
             </section>
 
-            <section className="panel-card">
-              <header className="panel-card__header"><h2>Presentation Background Debug</h2><p>Lightweight visibility into shared background propagation.</p></header>
-              <div className="panel-card__body">
-                <dl className="debug-grid">
-                  <div><dt>Raw file path</dt><dd>{customBackgroundPath ?? "None selected"}</dd></div>
-                  <div><dt>Renderable source</dt><dd>{customBackgroundSource ?? "Not available"}</dd></div>
-                  <div><dt>Verse preview using custom image</dt><dd>{isVersePreviewUsingCustomImage ? "Yes" : "No"}</dd></div>
-                  <div><dt>Projector using custom image</dt><dd>{isProjectorUsingCustomImage ? "Yes" : "No"}</dd></div>
-                  <div><dt>Fullscreen using custom image</dt><dd>{isFullscreenUsingCustomImage ? "Yes" : "No"}</dd></div>
-                </dl>
-              </div>
-            </section>
-
-            <section className="panel-card">
-              <header className="panel-card__header"><h2>Metadata</h2><p>Quick validation details for the currently loaded passage.</p></header>
+            <section className="panel-card metadata-strip-card">
               <div className="panel-card__body">
                 <dl className="metadata-grid">
                   <div><dt>Reference</dt><dd>{result.reference}</dd></div>
@@ -1168,6 +1158,25 @@ export default function App() {
                         <input type="checkbox" checked={reopenProjectorOnLaunch} onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)} />
                         Reopen projector window on startup
                       </label>
+                    </div>
+                  </details>
+                  <details className="settings-section" open>
+                    <summary>Support & Advanced</summary>
+                    <div className="settings-section__body">
+                      <div className="service-actions">
+                        <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("help")}>
+                          Open Help
+                        </button>
+                        <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("debug")}>
+                          Open Debug Tools
+                        </button>
+                      </div>
+                      {isProjectorWindowOpen ? (
+                        <button className="present-button present-button--secondary" type="button" onClick={() => void handleCloseProjectorView()}>
+                          Close Projector View
+                        </button>
+                      ) : null}
+                      <p className="session-notice">Debug tools are intentionally hidden from the default operator surface.</p>
                     </div>
                   </details>
                 </div>
