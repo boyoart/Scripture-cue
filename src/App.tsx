@@ -46,7 +46,7 @@ type HistoryItem = {
   repeats: number;
 };
 
-type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "error";
+type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "waiting_for_speech" | "error";
 type SessionLogFilter = "all" | "typed" | "spoken";
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
@@ -108,7 +108,7 @@ export default function App() {
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
   const startupRestoreStartedRef = useRef(false);
   const autoListeningSessionRef = useRef(false);
-  const { bars, micState, transcript, errorMessage, listening, startListening, stopListening } = useSpeechMeter();
+  const { bars, micState, transcript, errorMessage, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
 
   const verseText = useMemo(() => {
     if (!result.found || result.verses.length === 0) {
@@ -158,6 +158,7 @@ export default function App() {
       projectionLineHeight
     ]
   );
+  const presentationState = projectorPayload;
 
   useEffect(() => {
     document.body.dataset.theme = softwareTheme;
@@ -355,7 +356,7 @@ export default function App() {
       }
 
       if (!canAutoSearch) {
-        setListeningState("idle");
+        setListeningState("waiting_for_speech");
         setSpeechNotice(`Auto mode held: "${spokenTranscript}" (low confidence/ambiguous, review required)`);
         return;
       }
@@ -367,7 +368,7 @@ export default function App() {
         now - lastAutoSearch.timestampMs < AUTO_SEARCH_DUPLICATE_COOLDOWN_MS;
 
       if (duplicateAutoSearch) {
-        setListeningState("idle");
+        setListeningState("waiting_for_speech");
         setSpeechNotice(`Auto mode duplicate suppressed: "${nextReference}"`);
         return;
       }
@@ -513,7 +514,7 @@ export default function App() {
       return;
     }
     if (micState === "idle" && listeningState === "listening") {
-      setListeningState("idle");
+      setListeningState("waiting_for_speech");
     }
   }, [listeningState, micState]);
 
@@ -526,13 +527,30 @@ export default function App() {
       }
 
       if (autoListeningSessionRef.current) {
-        setListeningState("listening");
+        setListeningState("waiting_for_speech");
         await startListening();
       }
     };
 
     void processAndContinue();
   }, [micState, runSpeechSearch, startListening, transcript]);
+
+  useEffect(() => {
+    if (listeningMode !== "auto" || !autoListeningSessionRef.current || listening) {
+      return;
+    }
+    if (micState === "error") {
+      return;
+    }
+    if (lastStopReason === "no-speech" || lastStopReason === "interrupted") {
+      setListeningState("waiting_for_speech");
+      setSpeechNotice(lastStopReason === "no-speech" ? "No speech detected; still listening in Auto mode." : "Recognition interrupted; retrying Auto listening.");
+      const retryId = window.setTimeout(() => {
+        void startListening();
+      }, 320);
+      return () => window.clearTimeout(retryId);
+    }
+  }, [lastStopReason, listening, listeningMode, micState, startListening]);
 
   useEffect(() => {
     if (listeningMode !== "auto") {
@@ -550,6 +568,8 @@ export default function App() {
         return "Processing";
       case "verse_loaded":
         return "Verse Loaded";
+      case "waiting_for_speech":
+        return "Waiting for speech";
       case "error":
         return "Error";
       default:
@@ -1074,32 +1094,32 @@ export default function App() {
 
       {isPresentationMode ? (
         <section className={`presentation-mode presentation-mode--${displayMode}`} aria-live="polite">
-          {backgroundMode === "custom-image" && customBackgroundSource ? (
+          {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource ? (
             <div
-              className={`presentation-background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
-              style={{ backgroundImage: `url(${customBackgroundSource})` }}
+              className={`presentation-background ${presentationState.blurBackgroundImage ? "presentation-background--blur" : ""}`}
+              style={{ backgroundImage: `url(${presentationState.customBackgroundSource})` }}
               aria-hidden="true"
             />
           ) : null}
           <div
             className="presentation-background__dim"
-            style={{ opacity: backgroundMode === "custom-image" ? backgroundDimStrength : 0.35 }}
+            style={{ opacity: presentationState.backgroundMode === "custom-image" ? presentationState.backgroundDimStrength : 0.35 }}
             aria-hidden="true"
           />
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>
-          <div className={`presentation-mode__content presentation-mode__content--${displayMode} ${useSafeMargins ? "presentation-mode__content--safe" : ""}`}>
-            {showPresentationReference ? (
-              <p className={`presentation-mode__reference presentation-mode__reference--${referencePlacement}`}>{result.reference}</p>
+          <div className={`presentation-mode__content presentation-mode__content--${presentationState.displayMode} ${presentationState.useSafeMargins ? "presentation-mode__content--safe" : ""}`}>
+            {presentationState.showReference ? (
+              <p className={`presentation-mode__reference presentation-mode__reference--${presentationState.referencePlacement}`}>{presentationState.result.reference}</p>
             ) : null}
             <pre
-              className={`presentation-mode__verse ${result.found ? "" : "presentation-mode__verse--empty"}`}
+              className={`presentation-mode__verse ${presentationState.result.found ? "" : "presentation-mode__verse--empty"}`}
               style={{
-                fontFamily: getPresentationFontCssFamily(projectionFontFamily),
-                fontSize: `${projectionFontSizePx}px`,
-                lineHeight: projectionLineHeight
+                fontFamily: getPresentationFontCssFamily(presentationState.projectionFontFamily),
+                fontSize: `${presentationState.projectionFontSizePx}px`,
+                lineHeight: presentationState.projectionLineHeight
               }}
             >
-              {verseText}
+              {presentationState.verseText}
             </pre>
           </div>
         </section>
