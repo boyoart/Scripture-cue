@@ -119,6 +119,7 @@ export default function App() {
   }, [result]);
 
   const customBackgroundSource = useMemo(() => getBackgroundImageSource(customBackgroundPath), [customBackgroundPath]);
+  const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
 
   const projectorPayload: ProjectorPayload = useMemo(
     () => ({
@@ -159,6 +160,28 @@ export default function App() {
     ]
   );
   const presentationState = projectorPayload;
+
+  useEffect(() => {
+    if (backgroundMode !== "custom-image") {
+      return;
+    }
+    console.info("[presentation-background] shared state updated", {
+      rawPath: customBackgroundPath,
+      renderSource: customBackgroundSource
+    });
+  }, [backgroundMode, customBackgroundPath, customBackgroundSource]);
+
+  useEffect(() => {
+    if (!isPresentationMode) {
+      return;
+    }
+    console.info("[presentation-background] fullscreen received state", {
+      backgroundMode: presentationState.backgroundMode,
+      rawPath: presentationState.customBackgroundPath,
+      renderSource: presentationState.customBackgroundSource,
+      hasBackground: Boolean(presentationState.customBackgroundSource)
+    });
+  }, [isPresentationMode, presentationState.backgroundMode, presentationState.customBackgroundPath, presentationState.customBackgroundSource]);
 
   useEffect(() => {
     document.body.dataset.theme = softwareTheme;
@@ -1063,12 +1086,42 @@ export default function App() {
             <section className="panel-card preview-card">
               <header className="panel-card__header"><h2>Verse Preview</h2><p>Large-format text for confidence monitor and projection checks.</p></header>
               <div className="panel-card__body">
-                <pre
-                  className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}
-                  style={{ fontFamily: getPresentationFontCssFamily(previewFontFamily), fontSize: `${previewFontSizePx}px` }}
+                <div
+                  className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
+                  data-background-received={String(hasCustomPresentationBackground)}
                 >
-                  {verseText}
-                </pre>
+                  {hasCustomPresentationBackground ? (
+                    <div
+                      className={`presentation-background verse-preview__background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
+                      style={{ backgroundImage: `url(${customBackgroundSource})` }}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <div
+                    className="presentation-background__dim verse-preview__dim"
+                    style={{ opacity: hasCustomPresentationBackground ? backgroundDimStrength : 0.35 }}
+                    aria-hidden="true"
+                  />
+                  <pre
+                    className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}
+                    style={{ fontFamily: getPresentationFontCssFamily(previewFontFamily), fontSize: `${previewFontSizePx}px` }}
+                  >
+                    {verseText}
+                  </pre>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel-card">
+              <header className="panel-card__header"><h2>Presentation Background Debug</h2><p>Lightweight visibility into shared background propagation.</p></header>
+              <div className="panel-card__body">
+                <dl className="debug-grid">
+                  <div><dt>Raw file path</dt><dd>{customBackgroundPath ?? "None selected"}</dd></div>
+                  <div><dt>Renderable source</dt><dd>{customBackgroundSource ?? "Not available"}</dd></div>
+                  <div><dt>Verse preview received</dt><dd>{hasCustomPresentationBackground ? "Yes" : "No"}</dd></div>
+                  <div><dt>Projector payload received</dt><dd>{presentationState.backgroundMode === "custom-image" && Boolean(presentationState.customBackgroundSource) ? "Yes" : "No"}</dd></div>
+                  <div><dt>Fullscreen payload received</dt><dd>{presentationState.backgroundMode === "custom-image" && Boolean(presentationState.customBackgroundSource) ? "Yes" : "No"}</dd></div>
+                </dl>
               </div>
             </section>
 

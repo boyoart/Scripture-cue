@@ -154,7 +154,11 @@ input[type="range"] { padding: 0; }
 .history-list__time { grid-column:2; grid-row:1/span 2; align-self:center; }
 
 .preview-card { flex:1; }
-.verse-preview { min-height:420px; margin:0; border:1px solid var(--border-soft); background:rgba(0,0,0,.18); border-radius:12px; padding:1.2rem; font-size:1.3rem; line-height:1.8; white-space:pre-line; }
+.verse-preview-shell { min-height: 420px; border:1px solid var(--border-soft); border-radius:12px; background:rgba(0,0,0,.18); position: relative; overflow: hidden; }
+.verse-preview-shell--image { background:#02040d; }
+.verse-preview__background { position: absolute; inset: 0; transform: scale(1.03); }
+.verse-preview__dim { z-index: 1; }
+.verse-preview { min-height:420px; margin:0; border:0; background:transparent; border-radius:12px; padding:1.2rem; font-size:1.3rem; line-height:1.8; white-space:pre-line; position: relative; z-index: 2; color: #eef2ff; text-shadow: 0 2px 8px rgba(0,0,0,.6); }
 .verse-preview--empty { color:var(--text-muted); }
 .metadata-grid, .debug-grid { display:grid; grid-template-columns:repeat(2,minmax(180px,1fr)); gap:.75rem; margin:0; }
 .metadata-grid dt, .debug-grid dt { font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:var(--text-muted); }
