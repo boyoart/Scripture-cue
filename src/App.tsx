@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { emit } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/api/dialog";
@@ -49,12 +49,26 @@ type HistoryItem = {
 type ListeningWorkflowState = "idle" | "listening" | "processing" | "verse_loaded" | "waiting_for_speech" | "error";
 type SessionLogFilter = "all" | "typed" | "spoken";
 type DetectionSignalSource = "final" | "interim";
+type HistoryPanelTab = "recent-history" | "session-log";
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
 const AUTO_MEDIUM_CONFIDENCE = 0.68;
 const AUTO_HIGH_PRIORITY_CONFIDENCE = 0.78;
 const AUTO_FINAL_CONFIDENCE = 0.82;
+
+function buildBackgroundImageStyle(source: string | null): CSSProperties | undefined {
+  if (!source) {
+    return undefined;
+  }
+
+  return {
+    backgroundImage: `url("${source}")`,
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat"
+  };
+}
 
 const EMPTY_RESULT: SearchResult = {
   found: false,
@@ -79,6 +93,11 @@ export default function App() {
   const [result, setResult] = useState<SearchResult>(EMPTY_RESULT);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [sessionLog, setSessionLog] = useState<SessionLogEntry[]>([]);
+  const [historyPanelTab, setHistoryPanelTab] = useState<HistoryPanelTab>("recent-history");
+  const [recentHistoryPage, setRecentHistoryPage] = useState(1);
+  const [recentHistoryPageSize, setRecentHistoryPageSize] = useState(8);
+  const [sessionLogPage, setSessionLogPage] = useState(1);
+  const [sessionLogPageSize, setSessionLogPageSize] = useState(8);
   const [sessionLogFilter, setSessionLogFilter] = useState<SessionLogFilter>("all");
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [status, setStatus] = useState("Ready");
@@ -126,18 +145,8 @@ export default function App() {
 
   const customBackgroundSource = useMemo(() => getBackgroundImageSource(customBackgroundPath), [customBackgroundPath]);
   const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
-  const presentationBackgroundStyle = useMemo(
-    () =>
-      customBackgroundSource
-        ? {
-            backgroundImage: `url("${customBackgroundSource}")`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat"
-          }
-        : undefined,
-    [customBackgroundSource]
-  );
+  const presentationBackgroundStyle = useMemo(() => buildBackgroundImageStyle(customBackgroundSource), [customBackgroundSource]);
+  const versePreviewShellStyle = useMemo(() => buildBackgroundImageStyle(hasCustomPresentationBackground ? customBackgroundSource : null), [customBackgroundSource, hasCustomPresentationBackground]);
   const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const fullscreenDimOpacity = backgroundMode === "custom-image" ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const isVersePreviewUsingCustomImage = hasCustomPresentationBackground;
@@ -187,6 +196,13 @@ export default function App() {
     ]
   );
   const presentationState = projectorPayload;
+  const fullscreenBackgroundStyle = useMemo(
+    () =>
+      buildBackgroundImageStyle(
+        presentationState.backgroundMode === "custom-image" ? presentationState.customBackgroundSource : null
+      ),
+    [presentationState.backgroundMode, presentationState.customBackgroundSource]
+  );
 
   useEffect(() => {
     if (backgroundMode !== "custom-image") {
@@ -216,6 +232,16 @@ export default function App() {
       delete document.body.dataset.theme;
     };
   }, [softwareTheme]);
+
+  useEffect(() => {
+    setRecentHistoryPage((current) => Math.min(current, Math.max(1, Math.ceil(history.length / recentHistoryPageSize))));
+  }, [history.length, recentHistoryPageSize]);
+
+  useEffect(() => {
+    const nextFilteredLength =
+      sessionLogFilter === "all" ? sessionLog.length : sessionLog.filter((entry) => entry.sourceType === sessionLogFilter).length;
+    setSessionLogPage((current) => Math.min(current, Math.max(1, Math.ceil(nextFilteredLength / sessionLogPageSize))));
+  }, [sessionLog, sessionLogFilter, sessionLogPageSize]);
 
   useEffect(() => {
     writeProjectorState(projectorPayload);
@@ -280,6 +306,18 @@ export default function App() {
     return sessionLog.filter((entry) => entry.sourceType === sessionLogFilter);
   }, [sessionLog, sessionLogFilter]);
 
+  const recentHistoryPageCount = Math.max(1, Math.ceil(history.length / recentHistoryPageSize));
+  const pagedHistory = useMemo(() => {
+    const startIndex = (recentHistoryPage - 1) * recentHistoryPageSize;
+    return history.slice(startIndex, startIndex + recentHistoryPageSize);
+  }, [history, recentHistoryPage, recentHistoryPageSize]);
+
+  const sessionLogPageCount = Math.max(1, Math.ceil(filteredSessionLog.length / sessionLogPageSize));
+  const pagedSessionLog = useMemo(() => {
+    const startIndex = (sessionLogPage - 1) * sessionLogPageSize;
+    return filteredSessionLog.slice(startIndex, startIndex + sessionLogPageSize);
+  }, [filteredSessionLog, sessionLogPage, sessionLogPageSize]);
+
   const pushHistoryWithCooldown = useCallback((nextReference: string) => {
     const now = Date.now();
     const last = lastHistoryEntryRef.current;
@@ -300,10 +338,10 @@ export default function App() {
           repeats: existingItem.repeats + 1
         };
         const withoutExisting = prev.filter((_, index) => index !== existingIndex);
-        return [nextEntry, ...withoutExisting].slice(0, 20);
+        return [nextEntry, ...withoutExisting];
       }
 
-      return [{ reference: nextReference, timestampMs: now, repeats: 1 }, ...prev].slice(0, 20);
+      return [{ reference: nextReference, timestampMs: now, repeats: 1 }, ...prev];
     });
   }, []);
 
@@ -871,18 +909,6 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="listening-mode-select">Listening mode</label>
-                  <select
-                    id="listening-mode-select"
-                    value={listeningMode}
-                    onChange={(e) => setListeningMode(e.target.value as ListeningMode)}
-                  >
-                    <option value="manual">Manual (operator confirms search)</option>
-                    <option value="auto">Auto (high-confidence spoken references present automatically)</option>
-                  </select>
-                </div>
-
                 <div className="mic-controls-row">
                   <button
                     className={`mic-toggle-button ${listening ? "mic-toggle-button--live" : ""}`}
@@ -911,42 +937,6 @@ export default function App() {
                   </select>
                 </div>
 
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="display-mode-select">Display mode</label>
-                  <select id="display-mode-select" value={displayMode} onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}>
-                    <option value="fullscreen">Fullscreen</option>
-                    <option value="lower-third">Lower Third</option>
-                  </select>
-                </div>
-
-                <label className="inline-check">
-                  <input type="checkbox" checked={showPresentationReference} onChange={(e) => setShowPresentationReference(e.target.checked)} />
-                  Show reference in presenter view
-                </label>
-
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="reference-placement-select">Reference placement</label>
-                  <select
-                    id="reference-placement-select"
-                    value={referencePlacement}
-                    onChange={(e) => setReferencePlacement(e.target.value as ReferencePlacement)}
-                  >
-                    <option value="top-left">Top-left</option>
-                    <option value="top-center">Top-center</option>
-                    <option value="bottom-left">Bottom-left</option>
-                  </select>
-                </div>
-
-                <label className="inline-check">
-                  <input type="checkbox" checked={useSafeMargins} onChange={(e) => setUseSafeMargins(e.target.checked)} />
-                  Use projector safe margins
-                </label>
-
-                <label className="inline-check">
-                  <input type="checkbox" checked={reopenProjectorOnLaunch} onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)} />
-                  Reopen projector window on startup
-                </label>
-
                 <div className="service-actions">
                   <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>
                     Clear Current Verse
@@ -960,147 +950,130 @@ export default function App() {
 
             <section className="panel-card">
               <header className="panel-card__header">
-                <h2>Presentation Background</h2>
-                <p>Independent projector/presenter background controls for scripture readability.</p>
+                <h2>Settings</h2>
+                <p>Consolidated operator controls for appearance, output, and listening preferences.</p>
               </header>
               <div className="panel-card__body search-controls">
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="background-mode-select">Background style</label>
-                  <select
-                    id="background-mode-select"
-                    value={backgroundMode}
-                    onChange={(e) => setBackgroundMode(e.target.value as PresentationBackgroundMode)}
-                  >
-                    <option value="solid-dark">Solid dark</option>
-                    <option value="custom-image">Custom image</option>
-                  </select>
-                </div>
-                <div className="service-actions">
-                  <button className="present-button present-button--secondary" type="button" onClick={() => void handlePickBackgroundImage()}>
-                    Choose Background Image
-                  </button>
-                  <button className="present-button present-button--secondary" type="button" onClick={handleResetBackgroundImage}>
-                    Use Solid Dark
-                  </button>
-                </div>
-                <p className="session-notice">Current image: {customBackgroundPath ?? "None selected"}</p>
-                <label className="inline-check">
-                  <input
-                    type="checkbox"
-                    checked={blurBackgroundImage}
-                    onChange={(e) => setBlurBackgroundImage(e.target.checked)}
-                    disabled={backgroundMode !== "custom-image"}
-                  />
-                  Blur custom image for readability
-                </label>
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="background-dim-input">
-                    Image dim strength ({Math.round(backgroundDimStrength * 100)}%)
-                  </label>
-                  <input
-                    id="background-dim-input"
-                    type="range"
-                    min={0.2}
-                    max={0.9}
-                    step={0.05}
-                    value={backgroundDimStrength}
-                    disabled={backgroundMode !== "custom-image"}
-                    onChange={(e) => setBackgroundDimStrength(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-            </section>
+                <details className="settings-section" open>
+                  <summary>Appearance</summary>
+                  <div className="settings-section__body">
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="software-theme-select">Theme</label>
+                      <select id="software-theme-select" value={softwareTheme} onChange={(e) => setSoftwareTheme(e.target.value as SoftwareTheme)}>
+                        {THEME_OPTIONS.map((theme) => (
+                          <option key={theme.value} value={theme.value}>{theme.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="session-notice">{THEME_OPTIONS.find((theme) => theme.value === softwareTheme)?.description}</p>
+                  </div>
+                </details>
 
-            <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Font Controls</h2>
-                <p>Separate typography controls for operator preview and projector/fullscreen output.</p>
-              </header>
-              <div className="panel-card__body search-controls">
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="preview-font-family-select">Preview font family</label>
-                  <select
-                    id="preview-font-family-select"
-                    value={previewFontFamily}
-                    onChange={(e) => setPreviewFontFamily(e.target.value as typeof previewFontFamily)}
-                  >
-                    {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
-                      <option key={`preview-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="preview-font-size-input">Preview font size ({previewFontSizePx}px)</label>
-                  <input
-                    id="preview-font-size-input"
-                    type="range"
-                    min={14}
-                    max={56}
-                    step={1}
-                    value={previewFontSizePx}
-                    onChange={(e) => setPreviewFontSizePx(Number(e.target.value))}
-                  />
-                </div>
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="projection-font-family-select">Projection font family</label>
-                  <select
-                    id="projection-font-family-select"
-                    value={projectionFontFamily}
-                    onChange={(e) => setProjectionFontFamily(e.target.value as typeof projectionFontFamily)}
-                  >
-                    {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
-                      <option key={`projector-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="projection-font-size-input">Projection font size ({projectionFontSizePx}px)</label>
-                  <input
-                    id="projection-font-size-input"
-                    type="range"
-                    min={30}
-                    max={120}
-                    step={1}
-                    value={projectionFontSizePx}
-                    onChange={(e) => setProjectionFontSizePx(Number(e.target.value))}
-                  />
-                </div>
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="projection-line-height-input">Projection line height ({projectionLineHeight.toFixed(2)})</label>
-                  <input
-                    id="projection-line-height-input"
-                    type="range"
-                    min={1.1}
-                    max={2.2}
-                    step={0.05}
-                    value={projectionLineHeight}
-                    onChange={(e) => setProjectionLineHeight(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-            </section>
+                <details className="settings-section" open>
+                  <summary>Fonts</summary>
+                  <div className="settings-section__body">
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="preview-font-family-select">Preview font family</label>
+                      <select id="preview-font-family-select" value={previewFontFamily} onChange={(e) => setPreviewFontFamily(e.target.value as typeof previewFontFamily)}>
+                        {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                          <option key={`preview-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="preview-font-size-input">Preview font size ({previewFontSizePx}px)</label>
+                      <input id="preview-font-size-input" type="range" min={14} max={56} step={1} value={previewFontSizePx} onChange={(e) => setPreviewFontSizePx(Number(e.target.value))} />
+                    </div>
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="projection-font-family-select">Projection font family</label>
+                      <select id="projection-font-family-select" value={projectionFontFamily} onChange={(e) => setProjectionFontFamily(e.target.value as typeof projectionFontFamily)}>
+                        {PRESENTATION_FONT_OPTIONS.map((fontOption) => (
+                          <option key={`projector-${fontOption.value}`} value={fontOption.value}>{fontOption.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="projection-font-size-input">Projection font size ({projectionFontSizePx}px)</label>
+                      <input id="projection-font-size-input" type="range" min={30} max={120} step={1} value={projectionFontSizePx} onChange={(e) => setProjectionFontSizePx(Number(e.target.value))} />
+                    </div>
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="projection-line-height-input">Projection line height ({projectionLineHeight.toFixed(2)})</label>
+                      <input id="projection-line-height-input" type="range" min={1.1} max={2.2} step={0.05} value={projectionLineHeight} onChange={(e) => setProjectionLineHeight(Number(e.target.value))} />
+                    </div>
+                  </div>
+                </details>
 
-            <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Software Theme</h2>
-                <p>Operator UI theme presets. These never change projector scripture backgrounds.</p>
-              </header>
-              <div className="panel-card__body search-controls">
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="software-theme-select">Theme</label>
-                  <select
-                    id="software-theme-select"
-                    value={softwareTheme}
-                    onChange={(e) => setSoftwareTheme(e.target.value as SoftwareTheme)}
-                  >
-                    {THEME_OPTIONS.map((theme) => (
-                      <option key={theme.value} value={theme.value}>{theme.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <p className="session-notice">
-                  {THEME_OPTIONS.find((theme) => theme.value === softwareTheme)?.description}
-                </p>
+                <details className="settings-section" open>
+                  <summary>Presentation Background</summary>
+                  <div className="settings-section__body">
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="background-mode-select">Background style</label>
+                      <select id="background-mode-select" value={backgroundMode} onChange={(e) => setBackgroundMode(e.target.value as PresentationBackgroundMode)}>
+                        <option value="solid-dark">Solid dark</option>
+                        <option value="custom-image">Custom image</option>
+                      </select>
+                    </div>
+                    <div className="service-actions">
+                      <button className="present-button present-button--secondary" type="button" onClick={() => void handlePickBackgroundImage()}>Choose Background Image</button>
+                      <button className="present-button present-button--secondary" type="button" onClick={handleResetBackgroundImage}>Use Solid Dark</button>
+                    </div>
+                    <p className="session-notice">Current image: {customBackgroundPath ?? "None selected"}</p>
+                    <label className="inline-check">
+                      <input type="checkbox" checked={blurBackgroundImage} onChange={(e) => setBlurBackgroundImage(e.target.checked)} disabled={backgroundMode !== "custom-image"} />
+                      Blur custom image for readability
+                    </label>
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="background-dim-input">Image dim strength ({Math.round(backgroundDimStrength * 100)}%)</label>
+                      <input id="background-dim-input" type="range" min={0.2} max={0.9} step={0.05} value={backgroundDimStrength} disabled={backgroundMode !== "custom-image"} onChange={(e) => setBackgroundDimStrength(Number(e.target.value))} />
+                    </div>
+                  </div>
+                </details>
+
+                <details className="settings-section" open>
+                  <summary>Display Options</summary>
+                  <div className="settings-section__body">
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="display-mode-select">Display mode</label>
+                      <select id="display-mode-select" value={displayMode} onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}>
+                        <option value="fullscreen">Fullscreen</option>
+                        <option value="lower-third">Lower Third</option>
+                      </select>
+                    </div>
+                    <label className="inline-check">
+                      <input type="checkbox" checked={showPresentationReference} onChange={(e) => setShowPresentationReference(e.target.checked)} />
+                      Show reference in presenter view
+                    </label>
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="reference-placement-select">Reference placement</label>
+                      <select id="reference-placement-select" value={referencePlacement} onChange={(e) => setReferencePlacement(e.target.value as ReferencePlacement)}>
+                        <option value="top-left">Top-left</option>
+                        <option value="top-center">Top-center</option>
+                        <option value="bottom-left">Bottom-left</option>
+                      </select>
+                    </div>
+                    <label className="inline-check">
+                      <input type="checkbox" checked={useSafeMargins} onChange={(e) => setUseSafeMargins(e.target.checked)} />
+                      Use projector safe margins
+                    </label>
+                  </div>
+                </details>
+
+                <details className="settings-section" open>
+                  <summary>Listening</summary>
+                  <div className="settings-section__body">
+                    <div className="translation-row">
+                      <label className="field-label" htmlFor="listening-mode-select">Listening mode</label>
+                      <select id="listening-mode-select" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
+                        <option value="manual">Manual (operator confirms search)</option>
+                        <option value="auto">Auto (high-confidence spoken references present automatically)</option>
+                      </select>
+                    </div>
+                    <label className="inline-check">
+                      <input type="checkbox" checked={reopenProjectorOnLaunch} onChange={(e) => setReopenProjectorOnLaunch(e.target.checked)} />
+                      Reopen projector window on startup
+                    </label>
+                  </div>
+                </details>
               </div>
             </section>
 
@@ -1142,54 +1115,117 @@ export default function App() {
             </section>
 
             <section className="panel-card">
-              <header className="panel-card__header"><h2>Recent History</h2><p>Newest successful scripture loads appear first.</p></header>
-              <div className="panel-card__body">
-                {history.length === 0 ? <p className="history-empty">No successful searches yet.</p> : (
-                  <ul className="history-list">
-                    {history.map((item, idx) => (
-                      <li key={`${item.reference}-${idx}`}>
-                        <button className="history-list__item" onClick={() => setReference(item.reference)}>
-                          <span className="history-list__reference">{item.reference}</span>
-                          <span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span>
-                          <span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </section>
-
-            <section className="panel-card">
-              <header className="panel-card__header"><h2>Service Session Log</h2><p>Chronological verses presented this service with one-click quick recall.</p></header>
+              <header className="panel-card__header"><h2>History</h2><p>One place for recent lookups and full service recall.</p></header>
               <div className="panel-card__body session-log-body">
-                <div className="session-log-actions session-log-actions--filters">
-                  <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("txt")}>Export TXT</button>
-                  <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("csv")}>Export CSV</button>
-                </div>
                 <div className="session-log-actions">
-                  <button className={`present-button present-button--secondary ${sessionLogFilter === "all" ? "present-button--active" : ""}`} type="button" onClick={() => setSessionLogFilter("all")}>All</button>
-                  <button className={`present-button present-button--secondary ${sessionLogFilter === "typed" ? "present-button--active" : ""}`} type="button" onClick={() => setSessionLogFilter("typed")}>Typed</button>
-                  <button className={`present-button present-button--secondary ${sessionLogFilter === "spoken" ? "present-button--active" : ""}`} type="button" onClick={() => setSessionLogFilter("spoken")}>Spoken</button>
+                  <button
+                    className={`present-button present-button--secondary ${historyPanelTab === "recent-history" ? "present-button--active" : ""}`}
+                    type="button"
+                    onClick={() => setHistoryPanelTab("recent-history")}
+                  >
+                    Recent History
+                  </button>
+                  <button
+                    className={`present-button present-button--secondary ${historyPanelTab === "session-log" ? "present-button--active" : ""}`}
+                    type="button"
+                    onClick={() => setHistoryPanelTab("session-log")}
+                  >
+                    Service Session Log
+                  </button>
                 </div>
-                <div className="session-log-actions">
-                  <button className="present-button present-button--secondary" type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
-                  <button className="present-button present-button--secondary" type="button" onClick={handleClearSessionLog}>Clear Session Log</button>
-                </div>
-                {sessionNotice ? <p className="session-notice">{sessionNotice}</p> : null}
 
-                {sessionLog.length === 0 ? <p className="history-empty">No verses presented in this session yet.</p> : filteredSessionLog.length === 0 ? <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p> : (
-                  <ol className="session-log-list" aria-label="Service session log">
-                    {filteredSessionLog.map((entry) => (
-                      <li key={entry.id}>
-                        <button className="history-list__item" onClick={() => void handleRecallSessionEntry(entry)}>
-                          <span className="history-list__reference">{entry.reference}</span>
-                          <span className="history-list__meta">Source: {entry.sourceType}</span>
-                          <span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ol>
+                {historyPanelTab === "recent-history" ? (
+                  <>
+                    <div className="history-pagination">
+                      <label className="field-label" htmlFor="recent-history-page-size">Page size</label>
+                      <select
+                        id="recent-history-page-size"
+                        value={String(recentHistoryPageSize)}
+                        onChange={(e) => {
+                          setRecentHistoryPageSize(Number(e.target.value));
+                          setRecentHistoryPage(1);
+                        }}
+                      >
+                        <option value="5">5</option>
+                        <option value="8">8</option>
+                        <option value="12">12</option>
+                        <option value="20">20</option>
+                      </select>
+                    </div>
+                    {history.length === 0 ? <p className="history-empty">No successful searches yet.</p> : (
+                      <>
+                        <ul className="history-list">
+                          {pagedHistory.map((item, idx) => (
+                            <li key={`${item.reference}-${item.timestampMs}-${idx}`}>
+                              <button className="history-list__item" onClick={() => setReference(item.reference)}>
+                                <span className="history-list__reference">{item.reference}</span>
+                                <span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span>
+                                <span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="history-pagination history-pagination--actions">
+                          <button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.max(1, value - 1))} disabled={recentHistoryPage <= 1}>Previous</button>
+                          <p className="history-empty">Page {recentHistoryPage} of {recentHistoryPageCount}</p>
+                          <button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.min(recentHistoryPageCount, value + 1))} disabled={recentHistoryPage >= recentHistoryPageCount}>Next</button>
+                        </div>
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="session-log-actions session-log-actions--filters">
+                      <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("txt")}>Export TXT</button>
+                      <button className="present-button present-button--secondary" type="button" onClick={() => void exportSessionLog("csv")}>Export CSV</button>
+                    </div>
+                    <div className="session-log-actions">
+                      <button className={`present-button present-button--secondary ${sessionLogFilter === "all" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("all"); setSessionLogPage(1); }}>All</button>
+                      <button className={`present-button present-button--secondary ${sessionLogFilter === "typed" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("typed"); setSessionLogPage(1); }}>Typed</button>
+                      <button className={`present-button present-button--secondary ${sessionLogFilter === "spoken" ? "present-button--active" : ""}`} type="button" onClick={() => { setSessionLogFilter("spoken"); setSessionLogPage(1); }}>Spoken</button>
+                    </div>
+                    <div className="session-log-actions">
+                      <button className="present-button present-button--secondary" type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
+                      <button className="present-button present-button--secondary" type="button" onClick={handleClearSessionLog}>Clear Session Log</button>
+                    </div>
+                    <div className="history-pagination">
+                      <label className="field-label" htmlFor="session-log-page-size">Page size</label>
+                      <select
+                        id="session-log-page-size"
+                        value={String(sessionLogPageSize)}
+                        onChange={(e) => {
+                          setSessionLogPageSize(Number(e.target.value));
+                          setSessionLogPage(1);
+                        }}
+                      >
+                        <option value="5">5</option>
+                        <option value="8">8</option>
+                        <option value="12">12</option>
+                        <option value="20">20</option>
+                      </select>
+                    </div>
+                    {sessionNotice ? <p className="session-notice">{sessionNotice}</p> : null}
+                    {sessionLog.length === 0 ? <p className="history-empty">No verses presented in this session yet.</p> : filteredSessionLog.length === 0 ? <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p> : (
+                      <>
+                        <ol className="session-log-list" aria-label="Service session log">
+                          {pagedSessionLog.map((entry) => (
+                            <li key={entry.id}>
+                              <button className="history-list__item" onClick={() => void handleRecallSessionEntry(entry)}>
+                                <span className="history-list__reference">{entry.reference}</span>
+                                <span className="history-list__meta">Source: {entry.sourceType}</span>
+                                <span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ol>
+                        <div className="history-pagination history-pagination--actions">
+                          <button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.max(1, value - 1))} disabled={sessionLogPage <= 1}>Previous</button>
+                          <p className="history-empty">Page {sessionLogPage} of {sessionLogPageCount}</p>
+                          <button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.min(sessionLogPageCount, value + 1))} disabled={sessionLogPage >= sessionLogPageCount}>Next</button>
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
               </div>
             </section>
@@ -1202,6 +1238,7 @@ export default function App() {
                 <div
                   className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
                   data-background-received={String(hasCustomPresentationBackground)}
+                  style={versePreviewShellStyle}
                 >
                   {hasCustomPresentationBackground ? (
                     <div
@@ -1266,7 +1303,7 @@ export default function App() {
           {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource ? (
             <div
               className={`presentation-background presentation-background--image ${presentationState.blurBackgroundImage ? "presentation-background--blur" : ""}`}
-              style={presentationBackgroundStyle}
+              style={fullscreenBackgroundStyle}
               aria-hidden="true"
             />
           ) : null}

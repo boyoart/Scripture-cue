@@ -180,6 +180,11 @@ input[type="range"] { padding: 0; }
 .coverage-count { margin:0; color:var(--text-main); }
 .quick-start summary { cursor:pointer; font-weight:600; color:var(--text-main); }
 .quick-start ul { margin:.75rem 0 0; padding-left:1.15rem; display:grid; gap:.45rem; color:var(--text-muted); font-size:.88rem; }
+.settings-section { border:1px solid var(--border-soft); border-radius:12px; background:rgba(11,16,32,.25); }
+.settings-section summary { cursor:pointer; padding:.7rem .8rem; font-weight:600; }
+.settings-section__body { border-top:1px solid var(--border-soft); padding:.8rem; display:grid; gap:.7rem; }
+.history-pagination { display:grid; gap:.45rem; }
+.history-pagination--actions { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items:center; }
 
 .presentation-mode, .projector-screen {
   min-height: 100vh; position: fixed; inset: 0; z-index: 40; background-color: #02040d; color: #fff; display: flex; align-items: center; justify-content: center; padding: 4rem;
@@ -219,7 +224,7 @@ input[type="range"] { padding: 0; }
 .projector-screen__content--lower-third {
   margin-top: auto;
   margin-bottom: clamp(1rem, 4vh, 3rem);
-  background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.62));
+  background: linear-gradient(180deg, rgba(0,0,0,.06), rgba(0,0,0,.46));
   border-radius: 14px;
   padding: 1.1rem 1.4rem;
 }
