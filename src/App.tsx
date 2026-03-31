@@ -53,6 +53,7 @@ type SessionLogFilter = "all" | "typed" | "spoken";
 type DetectionSignalSource = "final" | "interim";
 type HistoryPanelTab = "recent-history" | "session-log";
 type OperatorDialog = "settings" | "history" | "help" | "debug" | null;
+type ShortcutDefinition = { keys: string; action: string };
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
@@ -61,6 +62,21 @@ const AUTO_HIGH_PRIORITY_CONFIDENCE = 0.78;
 const AUTO_FINAL_CONFIDENCE = 0.82;
 const AUTO_BOOK_ANCHOR_CONFIDENCE = 0.42;
 const AUTO_BOOK_CANDIDATE_HOLD_MS = 2200;
+const MAX_FAVORITE_REFERENCES = 24;
+
+const SHORTCUT_REFERENCE: ShortcutDefinition[] = [
+  { keys: "Alt+F", action: "Focus search input" },
+  { keys: "Alt+Enter", action: "Search current reference" },
+  { keys: "Alt+M", action: "Start/Stop listening" },
+  { keys: "Alt+A", action: "Toggle Auto Listening mode" },
+  { keys: "Alt+P", action: "Open/Focus projector view" },
+  { keys: "Alt+Shift+P", action: "Toggle fullscreen presentation" },
+  { keys: "Alt+L", action: "Toggle Lower Third mode" },
+  { keys: "Alt+Backspace", action: "Clear current verse" },
+  { keys: "Alt+R", action: "Re-present current verse" },
+  { keys: "Alt+,", action: "Open Settings" },
+  { keys: "Alt+H", action: "Open History / Session" }
+];
 
 const EMPTY_RESULT: SearchResult = {
   found: false,
@@ -121,7 +137,9 @@ export default function App() {
   const [projectionLineHeight, setProjectionLineHeight] = useState(initialSettings.projectionLineHeight);
   const [lowerThirdOutputMode, setLowerThirdOutputMode] = useState<LowerThirdOutputMode>(initialSettings.lowerThirdOutputMode);
   const [lowerThirdChromaKeyColor, setLowerThirdChromaKeyColor] = useState(initialSettings.lowerThirdChromaKeyColor);
+  const [favoriteReferences, setFavoriteReferences] = useState<string[]>(initialSettings.favoriteReferences);
   const [activeDialog, setActiveDialog] = useState<OperatorDialog>(null);
+  const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
@@ -289,6 +307,7 @@ export default function App() {
         projectionLineHeight,
         lowerThirdOutputMode,
         lowerThirdChromaKeyColor,
+        favoriteReferences,
         result
       })
     );
@@ -314,6 +333,7 @@ export default function App() {
     projectionLineHeight,
     lowerThirdOutputMode,
     lowerThirdChromaKeyColor,
+    favoriteReferences,
     result
   ]);
 
@@ -388,6 +408,31 @@ export default function App() {
     void syncProjectorNow("Current verse re-presented");
   }, [syncProjectorNow]);
 
+  const focusSearchInput = useCallback(() => {
+    referenceInputRef.current?.focus();
+    referenceInputRef.current?.select();
+    setStatus("Reference input focused");
+  }, []);
+
+  const toggleAutoListeningMode = useCallback(() => {
+    setListeningMode((previousMode) => {
+      const nextMode: ListeningMode = previousMode === "auto" ? "manual" : "auto";
+      setStatus(nextMode === "auto" ? "Listening mode set to Auto" : "Listening mode set to Manual");
+      if (nextMode !== "auto") {
+        autoListeningSessionRef.current = false;
+      }
+      return nextMode;
+    });
+  }, []);
+
+  const toggleDisplayMode = useCallback(() => {
+    setDisplayMode((previousMode) => {
+      const nextMode: DisplayMode = previousMode === "fullscreen" ? "lower-third" : "fullscreen";
+      setStatus(nextMode === "lower-third" ? "Lower Third mode enabled" : "Fullscreen mode enabled");
+      return nextMode;
+    });
+  }, []);
+
   const handleSearch = useCallback(
     async (overrideReference?: string, sourceType: SessionSourceType = "typed") => {
       const trimmed = (overrideReference ?? reference).trim();
@@ -424,19 +469,19 @@ export default function App() {
     [pushHistoryWithCooldown, reference]
   );
 
-  async function handleStartListening() {
+  const handleStartListening = useCallback(async () => {
     setSpeechNotice(null);
     setListeningState("listening");
     autoListeningSessionRef.current = listeningMode === "auto";
     await startListening();
-  }
+  }, [listeningMode, startListening]);
 
-  function handleStopListening() {
+  const handleStopListening = useCallback(() => {
     autoListeningSessionRef.current = false;
     stopListening("idle");
     setListeningState("idle");
     setStatus("Listening stopped");
-  }
+  }, [stopListening]);
 
   const runSpeechSearch = useCallback(
     async (spokenTranscript: string) => {
@@ -681,6 +726,37 @@ export default function App() {
     setStatus("Presentation background reset to solid dark");
   }, []);
 
+  const handleSaveFavoriteReference = useCallback(() => {
+    const nextFavorite = (result.found ? result.reference : reference).trim();
+    if (!nextFavorite) {
+      setStatus("No reference available to save");
+      return;
+    }
+
+    setFavoriteReferences((previous) => {
+      if (previous.includes(nextFavorite)) {
+        setStatus(`Favorite already saved: ${nextFavorite}`);
+        return previous;
+      }
+      const next = [nextFavorite, ...previous].slice(0, MAX_FAVORITE_REFERENCES);
+      setStatus(`Favorite saved: ${nextFavorite}`);
+      return next;
+    });
+  }, [reference, result.found, result.reference]);
+
+  const handleRemoveFavoriteReference = useCallback((favorite: string) => {
+    setFavoriteReferences((previous) => previous.filter((item) => item !== favorite));
+    setStatus(`Favorite removed: ${favorite}`);
+  }, []);
+
+  const handleRecallFavoriteReference = useCallback(
+    async (favorite: string) => {
+      setReference(favorite);
+      await handleSearch(favorite, "typed");
+    },
+    [handleSearch]
+  );
+
   useEffect(() => {
     const existingWindow = WebviewWindow.getByLabel(PROJECTOR_WINDOW_LABEL);
     if (!existingWindow) {
@@ -872,6 +948,16 @@ export default function App() {
     setIsProjectorWindowOpen(false);
   }, []);
 
+  const toggleProjectorView = useCallback(async () => {
+    if (isProjectorWindowOpen) {
+      await handleCloseProjectorView();
+      setStatus("Projector view closed");
+      return;
+    }
+
+    await handleOpenProjectorView();
+  }, [handleCloseProjectorView, handleOpenProjectorView, isProjectorWindowOpen]);
+
   useEffect(() => {
     if (!isRestoringStartupState || startupRestoreStartedRef.current) return;
     startupRestoreStartedRef.current = true;
@@ -912,6 +998,100 @@ export default function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeDialog]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.altKey || event.repeat) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+
+      if (key === "f" && !event.shiftKey) {
+        event.preventDefault();
+        focusSearchInput();
+        return;
+      }
+
+      if (key === "enter" && !event.shiftKey) {
+        event.preventDefault();
+        void handleSearch();
+        return;
+      }
+
+      if (key === "m" && !event.shiftKey) {
+        event.preventDefault();
+        if (listening) {
+          handleStopListening();
+        } else {
+          void handleStartListening();
+        }
+        return;
+      }
+
+      if (key === "a" && !event.shiftKey) {
+        event.preventDefault();
+        toggleAutoListeningMode();
+        return;
+      }
+
+      if (key === "p" && !event.shiftKey) {
+        event.preventDefault();
+        void handleOpenProjectorView();
+        return;
+      }
+
+      if (key === "p" && event.shiftKey) {
+        event.preventDefault();
+        void togglePresentationMode();
+        return;
+      }
+
+      if (key === "l" && !event.shiftKey) {
+        event.preventDefault();
+        toggleDisplayMode();
+        return;
+      }
+
+      if (key === "backspace" && !event.shiftKey) {
+        event.preventDefault();
+        handleClearCurrentVerse();
+        return;
+      }
+
+      if (key === "r" && !event.shiftKey) {
+        event.preventDefault();
+        handleRepresentCurrentVerse();
+        return;
+      }
+
+      if (key === "," && !event.shiftKey) {
+        event.preventDefault();
+        setActiveDialog("settings");
+        return;
+      }
+
+      if (key === "h" && !event.shiftKey) {
+        event.preventDefault();
+        setActiveDialog("history");
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    focusSearchInput,
+    handleClearCurrentVerse,
+    handleOpenProjectorView,
+    handleRepresentCurrentVerse,
+    handleSearch,
+    handleStartListening,
+    handleStopListening,
+    listening,
+    toggleAutoListeningMode,
+    toggleDisplayMode,
+    togglePresentationMode
+  ]);
 
   return (
     <>
@@ -959,6 +1139,7 @@ export default function App() {
                 <div className="search-row">
                   <input
                     id="reference-input"
+                    ref={referenceInputRef}
                     value={reference}
                     onChange={(e) => setReference(e.target.value)}
                     onKeyDown={(e) => {
@@ -970,6 +1151,7 @@ export default function App() {
                     {isLoading ? "Searching..." : "Search"}
                   </button>
                 </div>
+                <p className="shortcut-hint">Tip: Alt+F focuses this field. Alt+Enter runs search.</p>
 
                 <div className="mic-controls-row">
                   <button
@@ -1021,6 +1203,62 @@ export default function App() {
                     Re-present Current Verse
                   </button>
                 </div>
+
+                <section className="quick-actions-panel" aria-label="Quick actions">
+                  <h3>Quick Actions</h3>
+                  <div className="quick-actions-grid">
+                    <button className="present-button" type="button" onClick={handleRepresentCurrentVerse}>Re-present Verse</button>
+                    <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>Clear Verse</button>
+                    <button
+                      className={`present-button ${listening ? "mic-toggle-button--live" : ""}`}
+                      type="button"
+                      onClick={() => {
+                        if (listening) {
+                          handleStopListening();
+                        } else {
+                          void handleStartListening();
+                        }
+                      }}
+                    >
+                      {listening ? "Stop Listening" : "Start Listening"}
+                    </button>
+                    <button className="present-button present-button--secondary" type="button" onClick={() => void toggleProjectorView()}>
+                      {isProjectorWindowOpen ? "Hide Projector" : "Show Projector"}
+                    </button>
+                    <button className="present-button present-button--secondary" type="button" onClick={() => void togglePresentationMode()}>
+                      {isPresentationMode ? "Exit Fullscreen" : "Enter Fullscreen"}
+                    </button>
+                    <button className="present-button present-button--secondary" type="button" onClick={toggleDisplayMode}>
+                      {displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}
+                    </button>
+                  </div>
+                </section>
+
+                <section className="favorites-panel" aria-label="Quick presets">
+                  <div className="favorites-panel__header">
+                    <h3>Favorites / Quick Presets</h3>
+                    <button className="present-button present-button--secondary" type="button" onClick={handleSaveFavoriteReference}>
+                      Save Current
+                    </button>
+                  </div>
+                  {favoriteReferences.length === 0 ? (
+                    <p className="history-empty">No favorites saved yet.</p>
+                  ) : (
+                    <ul className="favorites-list">
+                      {favoriteReferences.map((favorite) => (
+                        <li key={favorite} className="favorites-list__item">
+                          <button className="history-list__item" type="button" onClick={() => void handleRecallFavoriteReference(favorite)}>
+                            <span className="history-list__reference">{favorite}</span>
+                            <span className="history-list__meta">Recall preset</span>
+                          </button>
+                          <button className="favorite-remove-button" type="button" onClick={() => handleRemoveFavoriteReference(favorite)}>
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
               </div>
             </section>
           </div>
@@ -1302,6 +1540,16 @@ export default function App() {
                     <li><strong>Backgrounds:</strong> Choose solid dark or custom image with optional blur/dim for readability.</li>
                     <li><strong>Themes:</strong> Software themes style the operator console only, not projector scripture backgrounds.</li>
                   </ul>
+                  <div className="shortcut-reference">
+                    <p className="field-label">Keyboard shortcuts</p>
+                    <ul>
+                      {SHORTCUT_REFERENCE.map((shortcut) => (
+                        <li key={shortcut.keys}>
+                          <strong>{shortcut.keys}</strong> — {shortcut.action}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </details>
               ) : null}
 

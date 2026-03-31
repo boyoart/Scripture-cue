@@ -35,6 +35,7 @@ export type PersistedAppSettings = {
   projectionLineHeight: number;
   lowerThirdOutputMode: LowerThirdOutputMode;
   lowerThirdChromaKeyColor: string;
+  favoriteReferences: string[];
 };
 
 const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
@@ -59,8 +60,21 @@ const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
   projectionFontSizePx: 64,
   projectionLineHeight: 1.5,
   lowerThirdOutputMode: "transparent",
-  lowerThirdChromaKeyColor: "#00ff00"
+  lowerThirdChromaKeyColor: "#00ff00",
+  favoriteReferences: []
 };
+
+function asStringArray(value: unknown, maxLength = 24): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+    .slice(0, maxLength);
+}
 
 function isReferencePlacement(value: unknown): value is ReferencePlacement {
   return value === "top-left" || value === "top-center" || value === "bottom-left";
@@ -170,7 +184,8 @@ export function readAppSettings(): PersistedAppSettings {
       lowerThirdOutputMode: isLowerThirdOutputMode(parsed.lowerThirdOutputMode)
         ? parsed.lowerThirdOutputMode
         : DEFAULT_APP_SETTINGS.lowerThirdOutputMode,
-      lowerThirdChromaKeyColor: asString(parsed.lowerThirdChromaKeyColor, DEFAULT_APP_SETTINGS.lowerThirdChromaKeyColor)
+      lowerThirdChromaKeyColor: asString(parsed.lowerThirdChromaKeyColor, DEFAULT_APP_SETTINGS.lowerThirdChromaKeyColor),
+      favoriteReferences: asStringArray(parsed.favoriteReferences)
     };
   } catch {
     return getDefaultAppSettings();
@@ -203,6 +218,7 @@ export function settingsFromSnapshot(input: {
   projectionLineHeight: number;
   lowerThirdOutputMode: LowerThirdOutputMode;
   lowerThirdChromaKeyColor: string;
+  favoriteReferences: string[];
   result: SearchResult;
 }): PersistedAppSettings {
   return {
@@ -227,6 +243,7 @@ export function settingsFromSnapshot(input: {
     projectionFontSizePx: input.projectionFontSizePx,
     projectionLineHeight: input.projectionLineHeight,
     lowerThirdOutputMode: input.lowerThirdOutputMode,
-    lowerThirdChromaKeyColor: input.lowerThirdChromaKeyColor
+    lowerThirdChromaKeyColor: input.lowerThirdChromaKeyColor,
+    favoriteReferences: input.favoriteReferences
   };
 }
