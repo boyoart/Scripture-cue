@@ -1,4 +1,4 @@
-import { type CSSProperties, type ComponentPropsWithoutRef, type ElementType, type PropsWithChildren } from "react";
+import { type ComponentPropsWithoutRef, type ElementType, type PropsWithChildren } from "react";
 import type { PresentationBackgroundMode } from "../features/display/projectorSync";
 
 type PresentationSurfaceProps<T extends ElementType> = PropsWithChildren<{
@@ -11,12 +11,6 @@ type PresentationSurfaceProps<T extends ElementType> = PropsWithChildren<{
   dimOpacity: number;
   containerProps?: Omit<ComponentPropsWithoutRef<T>, "as" | "className" | "children"> & Record<string, unknown>;
 }>;
-
-function buildBackgroundImageStyle(source: string): CSSProperties {
-  return {
-    backgroundImage: `url("${source}")`
-  };
-}
 
 export default function PresentationSurface<T extends ElementType = "div">({
   as,
@@ -36,9 +30,12 @@ export default function PresentationSurface<T extends ElementType = "div">({
     <Component className={`presentation-surface ${className}`.trim()} {...containerProps}>
       <div
         className={`presentation-surface__background-layer ${shouldRenderImage ? "presentation-surface__background-layer--image" : "presentation-surface__background-layer--solid"} ${shouldRenderImage && blurBackgroundImage ? "presentation-surface__background-layer--blur" : ""}`.trim()}
-        style={shouldRenderImage && backgroundSource ? buildBackgroundImageStyle(backgroundSource) : undefined}
         aria-hidden="true"
-      />
+      >
+        {shouldRenderImage && backgroundSource ? (
+          <img className="presentation-surface__background-image" src={backgroundSource} alt="" aria-hidden="true" />
+        ) : null}
+      </div>
       <div className="presentation-surface__overlay-layer" style={{ opacity: dimOpacity }} aria-hidden="true" />
       <div className={`presentation-surface__content-layer ${contentClassName}`.trim()}>{children}</div>
     </Component>

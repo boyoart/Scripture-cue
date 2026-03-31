@@ -108,6 +108,7 @@ export default function App() {
   const [softwareTheme, setSoftwareTheme] = useState<SoftwareTheme>(initialSettings.softwareTheme);
   const [backgroundMode, setBackgroundMode] = useState<PresentationBackgroundMode>(initialSettings.backgroundMode);
   const [customBackgroundPath, setCustomBackgroundPath] = useState<string | null>(initialSettings.customBackgroundPath);
+  const [customBackgroundSource, setCustomBackgroundSource] = useState<string | null>(null);
   const [backgroundDimStrength, setBackgroundDimStrength] = useState(initialSettings.backgroundDimStrength);
   const [blurBackgroundImage, setBlurBackgroundImage] = useState(initialSettings.blurBackgroundImage);
   const [previewFontFamily, setPreviewFontFamily] = useState(initialSettings.previewFontFamily);
@@ -133,7 +134,6 @@ export default function App() {
     return result.verses.map((v) => `${v.verse}. ${v.text}`).join("\n");
   }, [result]);
 
-  const customBackgroundSource = useMemo(() => getBackgroundImageSource(customBackgroundPath), [customBackgroundPath]);
   const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
   const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const fullscreenDimOpacity = backgroundMode === "custom-image" ? Math.min(backgroundDimStrength, 0.8) : 0.35;
@@ -184,6 +184,29 @@ export default function App() {
     ]
   );
   const presentationState = projectorPayload;
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    const loadBackgroundSource = async () => {
+      if (!customBackgroundPath) {
+        setCustomBackgroundSource(null);
+        return;
+      }
+
+      const nextSource = await getBackgroundImageSource(customBackgroundPath);
+      if (isCurrent) {
+        setCustomBackgroundSource(nextSource);
+      }
+    };
+
+    void loadBackgroundSource();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [customBackgroundPath]);
+
   useEffect(() => {
     if (backgroundMode !== "custom-image") {
       return;
@@ -1235,7 +1258,14 @@ export default function App() {
                     <div className="panel-card__body">
                       <dl className="debug-grid">
                         <div><dt>Raw file path</dt><dd>{customBackgroundPath ?? "None selected"}</dd></div>
-                        <div><dt>Renderable source</dt><dd>{customBackgroundSource ?? "Not available"}</dd></div>
+                        <div>
+                          <dt>Renderable source</dt>
+                          <dd>
+                            {customBackgroundSource
+                              ? `${customBackgroundSource.slice(0, 120)}${customBackgroundSource.length > 120 ? "…" : ""}`
+                              : "Not available"}
+                          </dd>
+                        </div>
                         <div><dt>Verse preview using custom image</dt><dd>{isVersePreviewUsingCustomImage ? "Yes" : "No"}</dd></div>
                         <div><dt>Projector using custom image</dt><dd>{isProjectorUsingCustomImage ? "Yes" : "No"}</dd></div>
                         <div><dt>Fullscreen using custom image</dt><dd>{isFullscreenUsingCustomImage ? "Yes" : "No"}</dd></div>

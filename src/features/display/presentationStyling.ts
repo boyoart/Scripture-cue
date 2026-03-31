@@ -1,4 +1,4 @@
-import { convertFileSrc } from "@tauri-apps/api/tauri";
+import { readBinaryFile } from "@tauri-apps/api/fs";
 import type { PresentationFontFamily } from "./projectorSync";
 
 export const PRESENTATION_FONT_OPTIONS: Array<{ value: PresentationFontFamily; label: string; cssFamily: string }> = [
@@ -36,7 +36,34 @@ function normalizeLocalFilePath(inputPath: string): string {
   return sanitizedPath;
 }
 
-export function getBackgroundImageSource(path: string | null): string | null {
+function getImageMimeType(path: string): string {
+  const extension = path.split(".").pop()?.toLowerCase();
+  switch (extension) {
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+    case "webp":
+      return "image/webp";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function toBase64(data: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+
+  for (let offset = 0; offset < data.length; offset += chunkSize) {
+    const chunk = data.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+}
+
+export async function getBackgroundImageSource(path: string | null): Promise<string | null> {
   if (!path) {
     return null;
   }
@@ -50,12 +77,14 @@ export function getBackgroundImageSource(path: string | null): string | null {
     return trimmed;
   }
 
-  const toTauriFileSource = (value: string) => convertFileSrc(normalizeLocalFilePath(value));
+  const normalizedPath = normalizeLocalFilePath(trimmed);
 
   try {
-    return toTauriFileSource(trimmed);
+    const imageBytes = await readBinaryFile(normalizedPath);
+    const mimeType = getImageMimeType(normalizedPath);
+    return `data:${mimeType};base64,${toBase64(imageBytes)}`;
   } catch (error) {
-    console.warn("[presentation] failed to convert background image path", error);
+    console.warn("[presentation] failed to load background image bytes", error);
     return null;
   }
 }
