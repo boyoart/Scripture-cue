@@ -27,6 +27,7 @@ import {
   getPresentationFontCssFamily,
   PRESENTATION_FONT_OPTIONS
 } from "./features/display/presentationStyling";
+import { useAutoFitPresentationText } from "./features/display/useAutoFitPresentationText";
 import {
   readAppSettings,
   settingsFromSnapshot,
@@ -158,6 +159,8 @@ export default function App() {
   const autoListeningSessionRef = useRef(false);
   const interimCaptureRef = useRef<{ transcript: string; normalizedReference: string; timestampMs: number } | null>(null);
   const autoBookAnchorRef = useRef<{ canonicalBook: string; timestampMs: number } | null>(null);
+  const fullscreenContentRef = useRef<HTMLDivElement | null>(null);
+  const fullscreenVerseRef = useRef<HTMLPreElement | null>(null);
   const [detectionPulseKey, setDetectionPulseKey] = useState(0);
   const { bars, micState, transcript, errorMessage, lastErrorCode, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
   const isListeningModeActive = persistentListeningMode !== "off";
@@ -226,6 +229,14 @@ export default function App() {
     ]
   );
   const presentationState = projectorPayload;
+  const { verseStyle: fullscreenVerseStyle, didHitMinimum: didFullscreenHitAutoFitMinimum } = useAutoFitPresentationText({
+    containerRef: fullscreenContentRef,
+    verseRef: fullscreenVerseRef,
+    preferredFontSizePx: presentationState.projectionFontSizePx,
+    preferredLineHeight: presentationState.projectionLineHeight,
+    displayMode: presentationState.displayMode,
+    contentKey: `${presentationState.result.reference}|${presentationState.verseText}|${presentationState.showReference}|${presentationState.referencePlacement}`
+  });
 
   useEffect(() => {
     let isCurrent = true;
@@ -1332,6 +1343,11 @@ export default function App() {
                     {verseText}
                   </pre>
                 </PresentationSurface>
+                {didFullscreenHitAutoFitMinimum && result.found ? (
+                  <p className="autofit-warning-note">
+                    Auto-fit hit the minimum projection size for this passage. Split into multiple slides if readability is low.
+                  </p>
+                ) : null}
               </div>
             </section>
 
@@ -1663,17 +1679,25 @@ export default function App() {
             "data-lower-third-output-mode": lowerThirdOutputMode,
             style: { "--lower-third-chroma-key": lowerThirdChromaKeyColor } as CSSProperties
           }}
+          contentProps={{
+            ref: fullscreenContentRef
+          }}
         >
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>
+          {didFullscreenHitAutoFitMinimum && presentationState.result.found ? (
+            <p className="presentation-fit-warning" role="status">
+              Passage reached minimum auto-fit size. Consider splitting into multiple slides for maximum readability.
+            </p>
+          ) : null}
           {presentationState.showReference ? (
             <p className={`presentation-mode__reference presentation-mode__reference--${presentationState.referencePlacement}`}>{presentationState.result.reference}</p>
           ) : null}
           <pre
+            ref={fullscreenVerseRef}
             className={`presentation-mode__verse ${presentationState.result.found ? "" : "presentation-mode__verse--empty"}`}
             style={{
               fontFamily: getPresentationFontCssFamily(presentationState.projectionFontFamily),
-              fontSize: `${presentationState.projectionFontSizePx}px`,
-              lineHeight: presentationState.projectionLineHeight
+              ...fullscreenVerseStyle
             }}
           >
             {presentationState.verseText}

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
 import { getPresentationFontCssFamily } from "../features/display/presentationStyling";
+import { useAutoFitPresentationText } from "../features/display/useAutoFitPresentationText";
 import PresentationSurface from "./PresentationSurface";
 import {
   getProjectorStorageKey,
@@ -116,6 +117,16 @@ export default function ProjectorView() {
   const dimOpacity = state.backgroundMode === "custom-image" ? Math.min(state.backgroundDimStrength, 0.8) : 0.35;
   const isTransparentLowerThird = state.displayMode === "lower-third" && state.lowerThirdOutputMode === "transparent";
   const isChromaLowerThird = state.displayMode === "lower-third" && state.lowerThirdOutputMode === "chroma-key";
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const verseRef = useRef<HTMLPreElement | null>(null);
+  const { verseStyle, didHitMinimum } = useAutoFitPresentationText({
+    containerRef: contentRef,
+    verseRef,
+    preferredFontSizePx: state.projectionFontSizePx,
+    preferredLineHeight: state.projectionLineHeight,
+    displayMode: state.displayMode,
+    contentKey: `${state.result.reference}|${verseText}|${state.showReference}|${state.referencePlacement}`
+  });
 
   useEffect(() => {
     console.info("[presentation-background] projector received state", {
@@ -141,6 +152,9 @@ export default function ProjectorView() {
         "data-lower-third-output-mode": state.lowerThirdOutputMode,
         style: { "--lower-third-chroma-key": state.lowerThirdChromaKeyColor } as CSSProperties
       }}
+      contentProps={{
+        ref: contentRef
+      }}
     >
       {state.showReference ? (
         <p className={`projector-screen__reference projector-screen__reference--${state.referencePlacement}`}>
@@ -148,11 +162,11 @@ export default function ProjectorView() {
         </p>
       ) : null}
       <pre
+        ref={verseRef}
         className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}
         style={{
           fontFamily: getPresentationFontCssFamily(state.projectionFontFamily),
-          fontSize: `${state.projectionFontSizePx}px`,
-          lineHeight: state.projectionLineHeight
+          ...verseStyle
         }}
       >
         {verseText}

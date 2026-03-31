@@ -1,4 +1,4 @@
-import { type ComponentPropsWithoutRef, type ElementType, type PropsWithChildren } from "react";
+import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type ElementType, type PropsWithChildren } from "react";
 import type { PresentationBackgroundMode } from "../features/display/projectorSync";
 
 type PresentationSurfaceProps<T extends ElementType> = PropsWithChildren<{
@@ -10,6 +10,7 @@ type PresentationSurfaceProps<T extends ElementType> = PropsWithChildren<{
   blurBackgroundImage: boolean;
   dimOpacity: number;
   containerProps?: Omit<ComponentPropsWithoutRef<T>, "as" | "className" | "children"> & Record<string, unknown>;
+  contentProps?: Omit<ComponentPropsWithRef<"div">, "className" | "children">;
 }>;
 
 export default function PresentationSurface<T extends ElementType = "div">({
@@ -21,6 +22,7 @@ export default function PresentationSurface<T extends ElementType = "div">({
   blurBackgroundImage,
   dimOpacity,
   containerProps,
+  contentProps,
   children
 }: PresentationSurfaceProps<T>) {
   const Component = (as ?? "div") as ElementType;
@@ -37,7 +39,9 @@ export default function PresentationSurface<T extends ElementType = "div">({
         ) : null}
       </div>
       <div className="presentation-surface__overlay-layer" style={{ opacity: dimOpacity }} aria-hidden="true" />
-      <div className={`presentation-surface__content-layer ${contentClassName}`.trim()}>{children}</div>
+      <div className={`presentation-surface__content-layer ${contentClassName}`.trim()} {...contentProps}>
+        {children}
+      </div>
     </Component>
   );
 }
