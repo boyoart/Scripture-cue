@@ -182,12 +182,13 @@ input[type="range"] { padding: 0; }
 .quick-start ul { margin:.75rem 0 0; padding-left:1.15rem; display:grid; gap:.45rem; color:var(--text-muted); font-size:.88rem; }
 
 .presentation-mode, .projector-screen {
-  min-height: 100vh; position: fixed; inset: 0; z-index: 40; background: #02040d; color: #fff; display: flex; align-items: center; justify-content: center; padding: 4rem;
+  min-height: 100vh; position: fixed; inset: 0; z-index: 40; background-color: #02040d; color: #fff; display: flex; align-items: center; justify-content: center; padding: 4rem;
 }
 .projector-screen { position: relative; }
 .presentation-background {
   position: absolute; inset: 0; background-position: center; background-size: cover; background-repeat: no-repeat; transform: scale(1.03); z-index: 0;
 }
+.presentation-background--image { z-index: 0; }
 .presentation-background--blur { filter: blur(10px); }
 .presentation-background--projector { position: fixed; }
 .presentation-background__dim { position: absolute; inset: 0; background: #000; z-index: 1; pointer-events: none; }
@@ -218,7 +219,7 @@ input[type="range"] { padding: 0; }
 .projector-screen__content--lower-third {
   margin-top: auto;
   margin-bottom: clamp(1rem, 4vh, 3rem);
-  background: linear-gradient(180deg, rgba(0,0,0,.1), rgba(0,0,0,.78));
+  background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.62));
   border-radius: 14px;
   padding: 1.1rem 1.4rem;
 }

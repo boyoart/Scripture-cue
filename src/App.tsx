@@ -52,8 +52,9 @@ type DetectionSignalSource = "final" | "interim";
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
-const AUTO_HIGH_PRIORITY_CONFIDENCE = 0.68;
-const AUTO_FINAL_CONFIDENCE = 0.74;
+const AUTO_MEDIUM_CONFIDENCE = 0.68;
+const AUTO_HIGH_PRIORITY_CONFIDENCE = 0.78;
+const AUTO_FINAL_CONFIDENCE = 0.82;
 
 const EMPTY_RESULT: SearchResult = {
   found: false,
@@ -136,27 +137,6 @@ export default function App() {
           }
         : undefined,
     [customBackgroundSource]
-  );
-  const previewSurfaceStyle = useMemo(
-    () =>
-      hasCustomPresentationBackground
-        ? {
-            ...presentationBackgroundStyle
-          }
-        : undefined,
-    [hasCustomPresentationBackground, presentationBackgroundStyle]
-  );
-  const fullscreenSurfaceStyle = useMemo(
-    () =>
-      backgroundMode === "custom-image" && customBackgroundSource
-        ? {
-            backgroundImage: `url("${customBackgroundSource}")`,
-            backgroundSize: "cover",
-            backgroundPosition: "center",
-            backgroundRepeat: "no-repeat"
-          }
-        : undefined,
-    [backgroundMode, customBackgroundSource]
   );
   const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
   const fullscreenDimOpacity = backgroundMode === "custom-image" ? Math.min(backgroundDimStrength, 0.8) : 0.35;
@@ -409,23 +389,34 @@ export default function App() {
       setSpeechDebug(normalized);
 
       const normalizedValue = normalized.normalizedReference.trim();
-      const canAutoSearch =
+      const hasStrongCandidate =
         normalized.query.kind === "spoken_reference" &&
         normalized.ambiguity === "clear" &&
         Boolean(normalized.structuredReference) &&
         normalized.confidence >= AUTO_FINAL_CONFIDENCE;
+      const hasMediumCandidate =
+        normalized.query.kind === "spoken_reference" &&
+        normalized.ambiguity === "clear" &&
+        Boolean(normalized.structuredReference) &&
+        normalized.confidence >= AUTO_MEDIUM_CONFIDENCE;
 
-      const nextReference = canAutoSearch ? normalizedValue || spokenTranscript.trim() : spokenTranscript.trim();
-      setReference(nextReference);
+      const nextReference = normalizedValue || spokenTranscript.trim();
 
       if (listeningMode === "manual") {
+        setReference(nextReference);
         autoListeningSessionRef.current = false;
         setListeningState("idle");
         setSpeechNotice(`Manual mode captured: "${spokenTranscript}" (confirm search before presenting)`);
         return;
       }
 
-      if (!canAutoSearch) {
+      if (!hasStrongCandidate) {
+        if (hasMediumCandidate && normalizedValue) {
+          setReference(normalizedValue);
+          setListeningState("waiting_for_speech");
+          setSpeechNotice(`Auto mode held medium-confidence candidate: "${normalizedValue}"`);
+          return;
+        }
         setListeningState("waiting_for_speech");
         setSpeechNotice("Auto mode ignored non-reference speech.");
         return;
@@ -1211,11 +1202,10 @@ export default function App() {
                 <div
                   className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
                   data-background-received={String(hasCustomPresentationBackground)}
-                  style={previewSurfaceStyle}
                 >
-                  {hasCustomPresentationBackground && blurBackgroundImage ? (
+                  {hasCustomPresentationBackground ? (
                     <div
-                      className={`presentation-background verse-preview__background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
+                      className={`presentation-background presentation-background--image verse-preview__background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
                       style={presentationBackgroundStyle}
                       aria-hidden="true"
                     />
@@ -1272,11 +1262,10 @@ export default function App() {
         <section
           className={`presentation-mode presentation-mode--${displayMode}`}
           aria-live="polite"
-          style={fullscreenSurfaceStyle}
         >
-          {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource && presentationState.blurBackgroundImage ? (
+          {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource ? (
             <div
-              className={`presentation-background ${presentationState.blurBackgroundImage ? "presentation-background--blur" : ""}`}
+              className={`presentation-background presentation-background--image ${presentationState.blurBackgroundImage ? "presentation-background--blur" : ""}`}
               style={presentationBackgroundStyle}
               aria-hidden="true"
             />
