@@ -120,6 +120,21 @@ export default function App() {
 
   const customBackgroundSource = useMemo(() => getBackgroundImageSource(customBackgroundPath), [customBackgroundPath]);
   const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
+  const presentationBackgroundStyle = useMemo(
+    () =>
+      customBackgroundSource
+        ? {
+            backgroundImage: `url("${customBackgroundSource}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat"
+          }
+        : undefined,
+    [customBackgroundSource]
+  );
+  const isVersePreviewUsingCustomImage = hasCustomPresentationBackground;
+  const isProjectorUsingCustomImage = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
+  const isFullscreenUsingCustomImage = isPresentationMode && backgroundMode === "custom-image" && Boolean(customBackgroundSource);
 
   const projectorPayload: ProjectorPayload = useMemo(
     () => ({
@@ -1093,7 +1108,7 @@ export default function App() {
                   {hasCustomPresentationBackground ? (
                     <div
                       className={`presentation-background verse-preview__background ${blurBackgroundImage ? "presentation-background--blur" : ""}`}
-                      style={{ backgroundImage: `url(${customBackgroundSource})` }}
+                      style={presentationBackgroundStyle}
                       aria-hidden="true"
                     />
                   ) : null}
@@ -1118,9 +1133,9 @@ export default function App() {
                 <dl className="debug-grid">
                   <div><dt>Raw file path</dt><dd>{customBackgroundPath ?? "None selected"}</dd></div>
                   <div><dt>Renderable source</dt><dd>{customBackgroundSource ?? "Not available"}</dd></div>
-                  <div><dt>Verse preview received</dt><dd>{hasCustomPresentationBackground ? "Yes" : "No"}</dd></div>
-                  <div><dt>Projector payload received</dt><dd>{presentationState.backgroundMode === "custom-image" && Boolean(presentationState.customBackgroundSource) ? "Yes" : "No"}</dd></div>
-                  <div><dt>Fullscreen payload received</dt><dd>{presentationState.backgroundMode === "custom-image" && Boolean(presentationState.customBackgroundSource) ? "Yes" : "No"}</dd></div>
+                  <div><dt>Verse preview using custom image</dt><dd>{isVersePreviewUsingCustomImage ? "Yes" : "No"}</dd></div>
+                  <div><dt>Projector using custom image</dt><dd>{isProjectorUsingCustomImage ? "Yes" : "No"}</dd></div>
+                  <div><dt>Fullscreen using custom image</dt><dd>{isFullscreenUsingCustomImage ? "Yes" : "No"}</dd></div>
                 </dl>
               </div>
             </section>
@@ -1150,7 +1165,7 @@ export default function App() {
           {presentationState.backgroundMode === "custom-image" && presentationState.customBackgroundSource ? (
             <div
               className={`presentation-background ${presentationState.blurBackgroundImage ? "presentation-background--blur" : ""}`}
-              style={{ backgroundImage: `url(${presentationState.customBackgroundSource})` }}
+              style={presentationBackgroundStyle}
               aria-hidden="true"
             />
           ) : null}

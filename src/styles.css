@@ -172,7 +172,7 @@ input[type="range"] { padding: 0; }
 }
 .projector-screen { position: relative; }
 .presentation-background {
-  position: absolute; inset: 0; background-position: center; background-size: cover; transform: scale(1.03); z-index: 0;
+  position: absolute; inset: 0; background-position: center; background-size: cover; background-repeat: no-repeat; transform: scale(1.03); z-index: 0;
 }
 .presentation-background--blur { filter: blur(10px); }
 .presentation-background--projector { position: fixed; }

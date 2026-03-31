@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
-import { getBackgroundImageSource, getPresentationFontCssFamily } from "../features/display/presentationStyling";
+import { getPresentationFontCssFamily } from "../features/display/presentationStyling";
 import {
   getProjectorStorageKey,
   PROJECTOR_STATE_EVENT,
@@ -101,12 +101,25 @@ export default function ProjectorView() {
   }, [state.verseText]);
 
   const backgroundImageSrc = useMemo(() => {
-    if (state.backgroundMode !== "custom-image" || !state.customBackgroundPath) {
+    if (state.backgroundMode !== "custom-image" || !state.customBackgroundSource) {
       return null;
     }
 
-    return state.customBackgroundSource ?? getBackgroundImageSource(state.customBackgroundPath);
-  }, [state.backgroundMode, state.customBackgroundPath, state.customBackgroundSource]);
+    return state.customBackgroundSource;
+  }, [state.backgroundMode, state.customBackgroundSource]);
+
+  const projectorBackgroundStyle = useMemo(
+    () =>
+      backgroundImageSrc
+        ? {
+            backgroundImage: `url("${backgroundImageSrc}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundRepeat: "no-repeat"
+          }
+        : undefined,
+    [backgroundImageSrc]
+  );
 
   useEffect(() => {
     console.info("[presentation-background] projector received state", {
@@ -122,7 +135,7 @@ export default function ProjectorView() {
       {backgroundImageSrc ? (
         <div
           className={`presentation-background presentation-background--projector ${state.blurBackgroundImage ? "presentation-background--blur" : ""}`}
-          style={{ backgroundImage: `url(${backgroundImageSrc})` }}
+          style={projectorBackgroundStyle}
           aria-hidden="true"
         />
       ) : null}
