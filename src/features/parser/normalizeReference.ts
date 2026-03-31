@@ -68,7 +68,7 @@ function sanitizeTranscript(input: string): string {
     .replace(/\bchapter\s*(\d+)/g, " chapter $1 ")
     .replace(/\bverse\s*(\d+)/g, " verse $1 ")
     .replace(/\bverses\s*(\d+)/g, " verse $1 ")
-    .replace(/\b(open|to|the|book|of|and|then|please|find|show|me)\b/g, " ")
+    .replace(/\b(open|the|book|of|and|then|please|find|show|me)\b/g, " ")
     .replace(/\bchapter\b/g, " chapter ")
     .replace(/\bverses?\b/g, " verse ")
     .replace(/\bcolon\b/g, " : ")
@@ -153,6 +153,19 @@ function parseNumberWords(tokens: string[], startIndex: number): { value: number
   return { value: mapped, consumed: 1 };
 }
 
+function parseFirstNumber(tokens: string[]): number | undefined {
+  for (let i = 0; i < tokens.length; i += 1) {
+    const parsed = parseNumberWords(tokens, i);
+    if (!parsed) {
+      continue;
+    }
+
+    return parsed.value;
+  }
+
+  return undefined;
+}
+
 function toReferenceString(book: string, chapter: number, verseStart?: number, verseEnd?: number): string {
   if (!verseStart) {
     return `${book} ${chapter}`;
@@ -183,6 +196,42 @@ function parseReferenceParts(remaining: string, canonicalBook: string): {
       verseEnd: colonMatch[3] ? Number(colonMatch[3]) : undefined,
       confidenceBoost: 0.3
     };
+  }
+
+  const tokens = remaining.split(" ").filter(Boolean);
+  const joinerIndex = tokens.findIndex((token) => RANGE_JOINERS.has(token));
+  if (joinerIndex > 0 && joinerIndex < tokens.length - 1) {
+    const preRangeTokens = tokens.slice(0, joinerIndex);
+    const postRangeTokens = tokens.slice(joinerIndex + 1);
+    const verseEnd = parseFirstNumber(postRangeTokens);
+
+    if (verseEnd !== undefined) {
+      const verseMarkerIndex = preRangeTokens.findIndex((token) => token === "verse" || token === "verses");
+      const chapterTokens =
+        verseMarkerIndex >= 0
+          ? preRangeTokens.slice(0, verseMarkerIndex).filter((token) => token !== "chapter")
+          : preRangeTokens.filter((token) => token !== "chapter");
+      const chapter = parseFirstNumber(chapterTokens);
+
+      let verseStart: number | undefined;
+      if (verseMarkerIndex >= 0) {
+        verseStart = parseFirstNumber(preRangeTokens.slice(verseMarkerIndex + 1));
+      } else if (chapterTokens.length > 0) {
+        const chapterStartIndex = preRangeTokens.findIndex((token) => token === chapterTokens[0]);
+        if (chapterStartIndex >= 0) {
+          verseStart = parseFirstNumber(preRangeTokens.slice(chapterStartIndex + 1));
+        }
+      }
+
+      if (chapter && verseStart && verseEnd >= verseStart) {
+        return {
+          chapter,
+          verseStart,
+          verseEnd,
+          confidenceBoost: 0.34
+        };
+      }
+    }
   }
 
   const chapterLabelMatch = remaining.match(/\bchapter\s+([a-z0-9 -]+?)(?=\s+verse\b|$)/);
@@ -228,22 +277,22 @@ function parseReferenceParts(remaining: string, canonicalBook: string): {
     }
   }
 
-  const tokens = remaining
+  const compactTokens = remaining
     .replace(/\bchapter\b/g, " ")
     .replace(/\bverse\b/g, " ")
     .split(" ")
     .filter(Boolean);
-  const compactNumericToken = tokens.length === 1 && /^\d+$/.test(tokens[0]) ? tokens[0] : undefined;
+  const compactNumericToken = compactTokens.length === 1 && /^\d+$/.test(compactTokens[0]) ? compactTokens[0] : undefined;
   const values: number[] = [];
   let sawRangeJoiner = false;
 
-  for (let i = 0; i < tokens.length; i += 1) {
-    if (RANGE_JOINERS.has(tokens[i])) {
+  for (let i = 0; i < compactTokens.length; i += 1) {
+    if (RANGE_JOINERS.has(compactTokens[i])) {
       sawRangeJoiner = true;
       continue;
     }
 
-    const parsed = parseNumberWords(tokens, i);
+    const parsed = parseNumberWords(compactTokens, i);
     if (!parsed) {
       continue;
     }
