@@ -1,7 +1,14 @@
 import type { SearchResult } from "../../api";
-import type { ReferencePlacement } from "../display/projectorSync";
+import type {
+  DisplayMode,
+  ListeningMode,
+  PresentationBackgroundMode,
+  ReferencePlacement
+} from "../display/projectorSync";
 
 const SETTINGS_STORAGE_KEY = "scripture-cue:app-settings:v1";
+
+export type SoftwareTheme = "midnight" | "charcoal" | "royal-blue" | "warm-church" | "high-contrast";
 
 export type PersistedAppSettings = {
   showPresentationReference: boolean;
@@ -12,6 +19,13 @@ export type PersistedAppSettings = {
   wasProjectorWindowOpen: boolean;
   lastReference: string | null;
   helpPanelExpanded: boolean;
+  listeningMode: ListeningMode;
+  displayMode: DisplayMode;
+  softwareTheme: SoftwareTheme;
+  backgroundMode: PresentationBackgroundMode;
+  customBackgroundPath: string | null;
+  backgroundDimStrength: number;
+  blurBackgroundImage: boolean;
 };
 
 const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
@@ -22,11 +36,40 @@ const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
   reopenProjectorOnLaunch: false,
   wasProjectorWindowOpen: false,
   lastReference: null,
-  helpPanelExpanded: true
+  helpPanelExpanded: true,
+  listeningMode: "manual",
+  displayMode: "fullscreen",
+  softwareTheme: "midnight",
+  backgroundMode: "solid-dark",
+  customBackgroundPath: null,
+  backgroundDimStrength: 0.5,
+  blurBackgroundImage: false
 };
 
 function isReferencePlacement(value: unknown): value is ReferencePlacement {
   return value === "top-left" || value === "top-center" || value === "bottom-left";
+}
+
+function isListeningMode(value: unknown): value is ListeningMode {
+  return value === "manual" || value === "auto";
+}
+
+function isDisplayMode(value: unknown): value is DisplayMode {
+  return value === "fullscreen" || value === "lower-third";
+}
+
+function isBackgroundMode(value: unknown): value is PresentationBackgroundMode {
+  return value === "solid-dark" || value === "custom-image";
+}
+
+function isSoftwareTheme(value: unknown): value is SoftwareTheme {
+  return (
+    value === "midnight" ||
+    value === "charcoal" ||
+    value === "royal-blue" ||
+    value === "warm-church" ||
+    value === "high-contrast"
+  );
 }
 
 function asBoolean(value: unknown, fallback: boolean): boolean {
@@ -35,6 +78,14 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
 
 function asString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0 ? value : fallback;
+}
+
+function asNumberInRange(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return fallback;
+  }
+
+  return Math.max(min, Math.min(max, value));
 }
 
 function asNullableString(value: unknown): string | null {
@@ -67,7 +118,14 @@ export function readAppSettings(): PersistedAppSettings {
       reopenProjectorOnLaunch: asBoolean(parsed.reopenProjectorOnLaunch, DEFAULT_APP_SETTINGS.reopenProjectorOnLaunch),
       wasProjectorWindowOpen: asBoolean(parsed.wasProjectorWindowOpen, DEFAULT_APP_SETTINGS.wasProjectorWindowOpen),
       lastReference: asNullableString(parsed.lastReference),
-      helpPanelExpanded: asBoolean(parsed.helpPanelExpanded, DEFAULT_APP_SETTINGS.helpPanelExpanded)
+      helpPanelExpanded: asBoolean(parsed.helpPanelExpanded, DEFAULT_APP_SETTINGS.helpPanelExpanded),
+      listeningMode: isListeningMode(parsed.listeningMode) ? parsed.listeningMode : DEFAULT_APP_SETTINGS.listeningMode,
+      displayMode: isDisplayMode(parsed.displayMode) ? parsed.displayMode : DEFAULT_APP_SETTINGS.displayMode,
+      softwareTheme: isSoftwareTheme(parsed.softwareTheme) ? parsed.softwareTheme : DEFAULT_APP_SETTINGS.softwareTheme,
+      backgroundMode: isBackgroundMode(parsed.backgroundMode) ? parsed.backgroundMode : DEFAULT_APP_SETTINGS.backgroundMode,
+      customBackgroundPath: asNullableString(parsed.customBackgroundPath),
+      backgroundDimStrength: asNumberInRange(parsed.backgroundDimStrength, DEFAULT_APP_SETTINGS.backgroundDimStrength, 0, 0.9),
+      blurBackgroundImage: asBoolean(parsed.blurBackgroundImage, DEFAULT_APP_SETTINGS.blurBackgroundImage)
     };
   } catch {
     return getDefaultAppSettings();
@@ -86,6 +144,13 @@ export function settingsFromSnapshot(input: {
   reopenProjectorOnLaunch: boolean;
   wasProjectorWindowOpen: boolean;
   helpPanelExpanded: boolean;
+  listeningMode: ListeningMode;
+  displayMode: DisplayMode;
+  softwareTheme: SoftwareTheme;
+  backgroundMode: PresentationBackgroundMode;
+  customBackgroundPath: string | null;
+  backgroundDimStrength: number;
+  blurBackgroundImage: boolean;
   result: SearchResult;
 }): PersistedAppSettings {
   return {
@@ -96,6 +161,13 @@ export function settingsFromSnapshot(input: {
     reopenProjectorOnLaunch: input.reopenProjectorOnLaunch,
     wasProjectorWindowOpen: input.wasProjectorWindowOpen,
     lastReference: input.result.found ? input.result.reference : null,
-    helpPanelExpanded: input.helpPanelExpanded
+    helpPanelExpanded: input.helpPanelExpanded,
+    listeningMode: input.listeningMode,
+    displayMode: input.displayMode,
+    softwareTheme: input.softwareTheme,
+    backgroundMode: input.backgroundMode,
+    customBackgroundPath: input.customBackgroundPath,
+    backgroundDimStrength: input.backgroundDimStrength,
+    blurBackgroundImage: input.blurBackgroundImage
   };
 }

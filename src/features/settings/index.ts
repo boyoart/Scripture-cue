@@ -3,5 +3,6 @@ export {
   readAppSettings,
   settingsFromSnapshot,
   writeAppSettings,
-  type PersistedAppSettings
+  type PersistedAppSettings,
+  type SoftwareTheme
 } from "./persistence";

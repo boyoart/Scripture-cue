@@ -6,6 +6,9 @@ export const PROJECTOR_STATE_EVENT = "projector:state-updated";
 const PROJECTOR_STATE_STORAGE_KEY = "scripture-cue:projector-state";
 
 export type ReferencePlacement = "top-left" | "top-center" | "bottom-left";
+export type ListeningMode = "manual" | "auto";
+export type DisplayMode = "fullscreen" | "lower-third";
+export type PresentationBackgroundMode = "solid-dark" | "custom-image";
 
 export type ProjectorPayload = {
   result: SearchResult;
@@ -13,6 +16,12 @@ export type ProjectorPayload = {
   showReference: boolean;
   referencePlacement: ReferencePlacement;
   useSafeMargins: boolean;
+  displayMode: DisplayMode;
+  backgroundMode: PresentationBackgroundMode;
+  customBackgroundPath: string | null;
+  customBackgroundSource: string | null;
+  backgroundDimStrength: number;
+  blurBackgroundImage: boolean;
 };
 
 export function readProjectorState(): ProjectorPayload | null {
