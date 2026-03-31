@@ -48,10 +48,7 @@ export function getBackgroundImageSource(path: string | null): string | null {
     return trimmed;
   }
 
-  const toTauriFileSource = (value: string) => {
-    const normalizedFilePath = normalizeLocalFilePath(value).replace(/\\/g, "/");
-    return convertFileSrc(normalizedFilePath);
-  };
+  const toTauriFileSource = (value: string) => convertFileSrc(normalizeLocalFilePath(value));
 
   try {
     return toTauriFileSource(trimmed);
