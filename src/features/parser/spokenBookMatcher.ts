@@ -19,7 +19,7 @@ const CANONICAL_BOOKS: CanonicalBookEntry[] = [
   { canonical: "1 Chronicles", aliases: ["1 chronicles", "first chronicles", "one chronicles", "1st chronicles"] },
   { canonical: "2 Chronicles", aliases: ["2 chronicles", "second chronicles", "two chronicles", "2nd chronicles"] },
   { canonical: "Ezra", aliases: ["ezra"] },
-  { canonical: "Nehemiah", aliases: ["nehemiah", "neh"] },
+  { canonical: "Nehemiah", aliases: ["nehemiah", "neh", "nehemia"] },
   { canonical: "Esther", aliases: ["esther"] },
   { canonical: "Job", aliases: ["job"] },
   { canonical: "Psalms", aliases: ["psalm", "psalms", "psalm's", "ps"] },
@@ -40,43 +40,43 @@ const CANONICAL_BOOKS: CanonicalBookEntry[] = [
   { canonical: "Hosea", aliases: ["hosea", "hos"] },
   { canonical: "Joel", aliases: ["joel"] },
   { canonical: "Amos", aliases: ["amos"] },
-  { canonical: "Obadiah", aliases: ["obadiah", "obad"] },
+  { canonical: "Obadiah", aliases: ["obadiah", "obad", "obediah"] },
   { canonical: "Jonah", aliases: ["jonah"] },
   { canonical: "Micah", aliases: ["micah", "mic"] },
-  { canonical: "Nahum", aliases: ["nahum", "nah"] },
-  { canonical: "Habakkuk", aliases: ["habakkuk", "hab", "habakuk", "habacuc"] },
-  { canonical: "Zephaniah", aliases: ["zephaniah", "zeph", "zephania", "zefaniah"] },
-  { canonical: "Haggai", aliases: ["haggai", "hag"] },
-  { canonical: "Zechariah", aliases: ["zechariah", "zech", "zachariah", "zechariah"] },
-  { canonical: "Malachi", aliases: ["malachi", "mal"] },
+  { canonical: "Nahum", aliases: ["nahum", "nah", "nahem"] },
+  { canonical: "Habakkuk", aliases: ["habakkuk", "hab", "habakuk", "habacuc", "habakkak"] },
+  { canonical: "Zephaniah", aliases: ["zephaniah", "zeph", "zephania", "zefaniah", "zefeniah"] },
+  { canonical: "Haggai", aliases: ["haggai", "hag", "hagee", "haggi"] },
+  { canonical: "Zechariah", aliases: ["zechariah", "zech", "zachariah"] },
+  { canonical: "Malachi", aliases: ["malachi", "mal", "malakai"] },
   { canonical: "Matthew", aliases: ["matthew", "matt"] },
   { canonical: "Mark", aliases: ["mark", "mrk"] },
   { canonical: "Luke", aliases: ["luke", "luk"] },
   { canonical: "John", aliases: ["john", "jn"] },
   { canonical: "Acts", aliases: ["acts"] },
   { canonical: "Romans", aliases: ["romans", "rom"] },
-  { canonical: "1 Corinthians", aliases: ["1 corinthians", "first corinthians", "one corinthians", "1st corinthians"] },
-  { canonical: "2 Corinthians", aliases: ["2 corinthians", "second corinthians", "two corinthians", "2nd corinthians"] },
+  { canonical: "1 Corinthians", aliases: ["1 corinthians", "first corinthians", "one corinthians", "1st corinthians", "1 cor"] },
+  { canonical: "2 Corinthians", aliases: ["2 corinthians", "second corinthians", "two corinthians", "2nd corinthians", "2 cor"] },
   { canonical: "Galatians", aliases: ["galatians", "gal"] },
   { canonical: "Ephesians", aliases: ["ephesians", "eph"] },
   { canonical: "Philippians", aliases: ["philippians", "phil"] },
   { canonical: "Colossians", aliases: ["colossians", "col"] },
   {
     canonical: "1 Thessalonians",
-    aliases: ["1 thessalonians", "first thessalonians", "one thessalonians", "1st thessalonians", "first thesselonians"]
+    aliases: ["1 thessalonians", "first thessalonians", "one thessalonians", "1st thessalonians", "first thesselonians", "1 thess", "first thess"]
   },
   {
     canonical: "2 Thessalonians",
-    aliases: ["2 thessalonians", "second thessalonians", "two thessalonians", "2nd thessalonians", "second thesselonians"]
+    aliases: ["2 thessalonians", "second thessalonians", "two thessalonians", "2nd thessalonians", "second thesselonians", "2 thess", "second thess"]
   },
-  { canonical: "1 Timothy", aliases: ["1 timothy", "first timothy", "one timothy", "1st timothy"] },
-  { canonical: "2 Timothy", aliases: ["2 timothy", "second timothy", "two timothy", "2nd timothy"] },
+  { canonical: "1 Timothy", aliases: ["1 timothy", "first timothy", "one timothy", "1st timothy", "1 tim"] },
+  { canonical: "2 Timothy", aliases: ["2 timothy", "second timothy", "two timothy", "2nd timothy", "2 tim"] },
   { canonical: "Titus", aliases: ["titus", "tit"] },
-  { canonical: "Philemon", aliases: ["philemon", "phlm", "phileman", "filemon"] },
+  { canonical: "Philemon", aliases: ["philemon", "phlm", "phileman", "filemon", "philemin"] },
   { canonical: "Hebrews", aliases: ["hebrews", "heb"] },
   { canonical: "James", aliases: ["james", "jas"] },
-  { canonical: "1 Peter", aliases: ["1 peter", "first peter", "one peter", "1st peter"] },
-  { canonical: "2 Peter", aliases: ["2 peter", "second peter", "two peter", "2nd peter"] },
+  { canonical: "1 Peter", aliases: ["1 peter", "first peter", "one peter", "1st peter", "1 pet"] },
+  { canonical: "2 Peter", aliases: ["2 peter", "second peter", "two peter", "2nd peter", "2 pet"] },
   { canonical: "1 John", aliases: ["1 john", "first john", "one john", "1st john"] },
   { canonical: "2 John", aliases: ["2 john", "second john", "two john", "2nd john"] },
   { canonical: "3 John", aliases: ["3 john", "third john", "three john", "3rd john"] },
@@ -90,12 +90,29 @@ type FlattenedAlias = {
   canonical: string;
 };
 
+function normalizeAlias(alias: string): string {
+  return alias
+    .toLowerCase()
+    .replace(/\bfirst\b/g, "1")
+    .replace(/\bsecond\b/g, "2")
+    .replace(/\bthird\b/g, "3")
+    .replace(/\b1st\b/g, "1")
+    .replace(/\b2nd\b/g, "2")
+    .replace(/\b3rd\b/g, "3")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const FLATTENED_ALIASES: FlattenedAlias[] = CANONICAL_BOOKS.flatMap((book) =>
-  book.aliases.map((alias) => ({
-    alias,
-    aliasTokens: alias.split(" "),
-    canonical: book.canonical
-  }))
+  book.aliases.map((alias) => {
+    const normalizedAlias = normalizeAlias(alias);
+    return {
+      alias: normalizedAlias,
+      aliasTokens: normalizedAlias.split(" ").filter(Boolean),
+      canonical: book.canonical
+    };
+  })
 );
 
 const MAX_ALIAS_TOKEN_LENGTH = Math.max(...FLATTENED_ALIASES.map((entry) => entry.aliasTokens.length));
@@ -149,18 +166,18 @@ function similarityScore(a: string, b: string): number {
 
 function fuzzyThresholdByTokenCount(tokenCount: number): number {
   if (tokenCount <= 1) {
-    return 0.94;
+    return 0.95;
   }
 
   if (tokenCount === 2) {
-    return 0.9;
+    return 0.92;
   }
 
-  return 0.86;
+  return 0.88;
 }
 
 export function matchSpokenBook(transcript: string): MatchResult {
-  const tokens = transcript.split(" ").filter(Boolean);
+  const tokens = normalizeAlias(transcript).split(" ").filter(Boolean);
   if (tokens.length === 0) {
     return { consumedTokenCount: 0, confidence: 0, ambiguous: true, source: "none", reason: "No transcript tokens" };
   }
@@ -188,6 +205,10 @@ export function matchSpokenBook(transcript: string): MatchResult {
     const candidate = tokens.slice(0, tokenLength).join(" ");
 
     for (const alias of FLATTENED_ALIASES) {
+      if (alias.aliasTokens.length !== tokenLength) {
+        continue;
+      }
+
       const score = similarityScore(candidate, alias.alias);
 
       if (!bestFuzzyMatch || score > bestFuzzyMatch.score) {
@@ -205,7 +226,7 @@ export function matchSpokenBook(transcript: string): MatchResult {
 
   const minimumScore = fuzzyThresholdByTokenCount(bestFuzzyMatch.consumedTokenCount);
   const margin = bestFuzzyMatch.score - secondBestScore;
-  const hasSafeConfidence = bestFuzzyMatch.score >= minimumScore && margin >= 0.04;
+  const hasSafeConfidence = bestFuzzyMatch.score >= minimumScore && margin >= 0.05;
 
   if (!hasSafeConfidence) {
     return {

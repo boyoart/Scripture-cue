@@ -57,6 +57,7 @@ const SIMPLE_NUMBERS: Record<string, number> = {
 };
 
 const RANGE_JOINERS = new Set(["to", "through", "thru", "-"]);
+const SINGLE_CHAPTER_BOOKS = new Set(["Obadiah", "Philemon", "2 John", "3 John", "Jude"]);
 const NUMBER_WORD_REGEX = /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|first|second|third)\b/;
 
 function sanitizeTranscript(input: string): string {
@@ -164,7 +165,7 @@ function toReferenceString(book: string, chapter: number, verseStart?: number, v
   return `${book} ${chapter}:${verseStart}-${verseEnd}`;
 }
 
-function parseReferenceParts(remaining: string): {
+function parseReferenceParts(remaining: string, canonicalBook: string): {
   chapter?: number;
   verseStart?: number;
   verseEnd?: number;
@@ -261,6 +262,14 @@ function parseReferenceParts(remaining: string): {
   }
 
   if (values.length === 1) {
+    if (SINGLE_CHAPTER_BOOKS.has(canonicalBook)) {
+      return {
+        chapter: 1,
+        verseStart: values[0],
+        confidenceBoost: 0.22
+      };
+    }
+
     if (compactNumericToken) {
       if (compactNumericToken.length === 2) {
         return {
@@ -320,7 +329,7 @@ export function normalizeTranscriptToReference(rawTranscript: string, translatio
 
   const cleanedTokens = cleaned.split(" ").filter(Boolean);
   const remainder = cleanedTokens.slice(bookMatch.offset + bookMatch.consumedTokenCount).join(" ").trim();
-  const parts = parseReferenceParts(remainder);
+  const parts = parseReferenceParts(remainder, bookMatch.canonicalBook);
   const recognizedVerses = parts.verseStart ? 0.16 : 0;
   const recognizedRange = parts.verseEnd ? 0.08 : 0;
   const bookConfidenceBase = 0.24 + bookMatch.confidence * 0.2;

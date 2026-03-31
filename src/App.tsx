@@ -97,7 +97,8 @@ const THEME_OPTIONS: Array<{ value: SoftwareTheme; label: string; description: s
 
 export default function App() {
   const initialSettings = useMemo(() => readAppSettings(), []);
-  const [reference, setReference] = useState("John 3:16");
+  const [referenceInput, setReferenceInput] = useState("John 3:16");
+  const [activeReference, setActiveReference] = useState("John 3:16");
   const [result, setResult] = useState<SearchResult>(EMPTY_RESULT);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [sessionLog, setSessionLog] = useState<SessionLogEntry[]>([]);
@@ -399,6 +400,7 @@ export default function App() {
   );
 
   const handleClearCurrentVerse = useCallback(() => {
+    setActiveReference("");
     setResult({ ...EMPTY_RESULT, message: "Verse cleared by operator." });
     setListeningState("idle");
     setStatus("Current verse cleared");
@@ -435,7 +437,7 @@ export default function App() {
 
   const handleSearch = useCallback(
     async (overrideReference?: string, sourceType: SessionSourceType = "typed") => {
-      const trimmed = (overrideReference ?? reference).trim();
+      const trimmed = (overrideReference ?? referenceInput).trim();
       if (!trimmed) return;
 
       try {
@@ -447,6 +449,8 @@ export default function App() {
         setResult(response);
 
         if (response.found && response.verses.length > 0) {
+          setActiveReference(response.reference);
+          setReferenceInput(response.reference);
           pushHistoryWithCooldown(response.reference);
           setSessionLog((prev) => addSessionLogEntry(prev, { reference: response.reference, sourceType }));
           setListeningState("verse_loaded");
@@ -466,7 +470,7 @@ export default function App() {
         setIsLoading(false);
       }
     },
-    [pushHistoryWithCooldown, reference]
+    [pushHistoryWithCooldown, referenceInput]
   );
 
   const handleStartListening = useCallback(async () => {
@@ -517,7 +521,7 @@ export default function App() {
       const nextReference = normalizedValue || spokenTranscript.trim();
 
       if (listeningMode === "manual") {
-        setReference(nextReference);
+        setReferenceInput(nextReference);
         autoListeningSessionRef.current = false;
         setListeningState("idle");
         setSpeechNotice(`Manual mode captured: "${spokenTranscript}" (confirm search before presenting)`);
@@ -526,7 +530,7 @@ export default function App() {
 
       if (!hasStrongCandidate) {
         if (hasMediumCandidate && normalizedValue) {
-          setReference(normalizedValue);
+          setReferenceInput(normalizedValue);
           setListeningState("waiting_for_speech");
           setSpeechNotice(`Auto mode held medium-confidence candidate: "${normalizedValue}"`);
           return;
@@ -553,6 +557,8 @@ export default function App() {
       }
 
       lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
+      setActiveReference(nextReference);
+      setReferenceInput(nextReference);
       triggerDetectionPulse();
       setSpeechNotice(`Auto mode presenting: "${spokenTranscript}" → ${nextReference}`);
       await handleSearch(nextReference, "spoken");
@@ -608,7 +614,8 @@ export default function App() {
 
       lastAutoSearchRef.current = { normalizedReference: nextReference, timestampMs: now };
       interimCaptureRef.current = { transcript: spokenTranscript, normalizedReference: nextReference, timestampMs: now };
-      setReference(nextReference);
+      setActiveReference(nextReference);
+      setReferenceInput(nextReference);
       triggerDetectionPulse();
       setSpeechNotice(
         source === "interim"
@@ -691,7 +698,8 @@ export default function App() {
 
   const handleRecallSessionEntry = useCallback(
     async (entry: SessionLogEntry) => {
-      setReference(entry.reference);
+      setActiveReference(entry.reference);
+      setReferenceInput(entry.reference);
       await handleSearch(entry.reference, entry.sourceType);
     },
     [handleSearch]
@@ -727,7 +735,7 @@ export default function App() {
   }, []);
 
   const handleSaveFavoriteReference = useCallback(() => {
-    const nextFavorite = (result.found ? result.reference : reference).trim();
+    const nextFavorite = (result.found ? result.reference : referenceInput).trim();
     if (!nextFavorite) {
       setStatus("No reference available to save");
       return;
@@ -742,7 +750,7 @@ export default function App() {
       setStatus(`Favorite saved: ${nextFavorite}`);
       return next;
     });
-  }, [reference, result.found, result.reference]);
+  }, [referenceInput, result.found, result.reference]);
 
   const handleRemoveFavoriteReference = useCallback((favorite: string) => {
     setFavoriteReferences((previous) => previous.filter((item) => item !== favorite));
@@ -751,7 +759,8 @@ export default function App() {
 
   const handleRecallFavoriteReference = useCallback(
     async (favorite: string) => {
-      setReference(favorite);
+      setActiveReference(favorite);
+      setReferenceInput(favorite);
       await handleSearch(favorite, "typed");
     },
     [handleSearch]
@@ -966,7 +975,8 @@ export default function App() {
       const restoredReference = initialSettings.lastReference;
 
       if (restoredReference) {
-        setReference(restoredReference);
+        setActiveReference(restoredReference);
+        setReferenceInput(restoredReference);
         await handleSearch(restoredReference, "typed");
       }
 
@@ -1140,8 +1150,8 @@ export default function App() {
                   <input
                     id="reference-input"
                     ref={referenceInputRef}
-                    value={reference}
-                    onChange={(e) => setReference(e.target.value)}
+                    value={referenceInput}
+                    onChange={(e) => setReferenceInput(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") void handleSearch();
                     }}
@@ -1290,7 +1300,7 @@ export default function App() {
             <section className="panel-card metadata-strip-card">
               <div className="panel-card__body">
                 <dl className="metadata-grid">
-                  <div><dt>Reference</dt><dd>{result.reference}</dd></div>
+                  <div><dt>Reference</dt><dd>{activeReference || result.reference}</dd></div>
                   <div><dt>Translation</dt><dd>{result.translation}</dd></div>
                   <div><dt>Theme</dt><dd>{result.theme}</dd></div>
                   <div><dt>Status</dt><dd>{result.found ? "Loaded" : "No Result"}</dd></div>
@@ -1499,7 +1509,7 @@ export default function App() {
                         </select>
                       </div>
                       {history.length === 0 ? <p className="history-empty">No successful searches yet.</p> : (<><ul className="history-list">{pagedHistory.map((item, idx) => (
-                        <li key={`${item.reference}-${item.timestampMs}-${idx}`}><button className="history-list__item" onClick={() => setReference(item.reference)}><span className="history-list__reference">{item.reference}</span><span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span><span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span></button></li>
+                        <li key={`${item.reference}-${item.timestampMs}-${idx}`}><button className="history-list__item" onClick={() => setReferenceInput(item.reference)}><span className="history-list__reference">{item.reference}</span><span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span><span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span></button></li>
                       ))}</ul><div className="history-pagination history-pagination--actions"><button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.max(1, value - 1))} disabled={recentHistoryPage <= 1}>Previous</button><p className="history-empty">Page {recentHistoryPage} of {recentHistoryPageCount}</p><button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.min(recentHistoryPageCount, value + 1))} disabled={recentHistoryPage >= recentHistoryPageCount}>Next</button></div></>)}
                     </>
                   ) : (
