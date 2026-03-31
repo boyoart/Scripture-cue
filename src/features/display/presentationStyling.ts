@@ -17,6 +17,23 @@ export function getPresentationFontCssFamily(fontFamily: PresentationFontFamily)
     '"Inter", "Segoe UI", Arial, sans-serif';
 }
 
+function normalizeLocalFilePath(inputPath: string): string {
+  if (inputPath.startsWith("file://")) {
+    try {
+      const parsed = new URL(inputPath);
+      const decoded = decodeURIComponent(parsed.pathname);
+      if (/^\/[A-Za-z]:\//.test(decoded)) {
+        return decoded.slice(1);
+      }
+      return decoded;
+    } catch {
+      return decodeURIComponent(inputPath.replace(/^file:\/\//, ""));
+    }
+  }
+
+  return inputPath;
+}
+
 export function getBackgroundImageSource(path: string | null): string | null {
   if (!path) {
     return null;
@@ -32,16 +49,11 @@ export function getBackgroundImageSource(path: string | null): string | null {
   }
 
   const toTauriFileSource = (value: string) => {
-    const normalized = value.replace(/\\/g, "/");
-    return convertFileSrc(normalized);
+    const normalizedFilePath = normalizeLocalFilePath(value).replace(/\\/g, "/");
+    return convertFileSrc(normalizedFilePath);
   };
 
   try {
-    if (trimmed.startsWith("file://")) {
-      const decoded = decodeURIComponent(trimmed.replace(/^file:\/\//, ""));
-      return toTauriFileSource(decoded);
-    }
-
     return toTauriFileSource(trimmed);
   } catch (error) {
     console.warn("[presentation] failed to convert background image path", error);

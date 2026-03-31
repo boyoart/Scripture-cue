@@ -108,8 +108,17 @@ export default function ProjectorView() {
     return state.customBackgroundSource ?? getBackgroundImageSource(state.customBackgroundPath);
   }, [state.backgroundMode, state.customBackgroundPath, state.customBackgroundSource]);
 
+  useEffect(() => {
+    console.info("[presentation-background] projector received state", {
+      backgroundMode: state.backgroundMode,
+      rawPath: state.customBackgroundPath,
+      renderSource: backgroundImageSrc,
+      hasBackground: Boolean(backgroundImageSrc)
+    });
+  }, [backgroundImageSrc, state.backgroundMode, state.customBackgroundPath]);
+
   return (
-    <main className="projector-screen" aria-live="polite">
+    <main className="projector-screen" aria-live="polite" data-background-received={String(Boolean(backgroundImageSrc))}>
       {backgroundImageSrc ? (
         <div
           className={`presentation-background presentation-background--projector ${state.blurBackgroundImage ? "presentation-background--blur" : ""}`}
