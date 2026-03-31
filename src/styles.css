@@ -239,10 +239,15 @@ input[type="range"] { padding: 0; }
 }
 .presentation-surface__background-layer {
   z-index: 0;
-  background-position: center;
-  background-size: cover;
-  background-repeat: no-repeat;
+  overflow: hidden;
   transform: scale(1.03);
+}
+.presentation-surface__background-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
 }
 .presentation-surface__background-layer--solid {
   background-color: #02040d;
