@@ -70,6 +70,7 @@ type DetectionSignalSource = "final" | "interim";
 type HistoryPanelTab = "recent-history" | "session-log";
 type OperatorDialog = "settings" | "history" | "help" | "debug" | null;
 type ShortcutDefinition = { keys: string; action: string };
+type TopMenuKey = "file" | "view" | "presentation" | "tools" | "help" | null;
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
@@ -157,6 +158,8 @@ export default function App() {
   const [lowerThirdChromaKeyColor, setLowerThirdChromaKeyColor] = useState(initialSettings.lowerThirdChromaKeyColor);
   const [favoriteReferences, setFavoriteReferences] = useState<string[]>(initialSettings.favoriteReferences);
   const [activeDialog, setActiveDialog] = useState<OperatorDialog>(null);
+  const [openTopMenu, setOpenTopMenu] = useState<TopMenuKey>(null);
+  const [supportPanelExpanded, setSupportPanelExpanded] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
@@ -179,6 +182,7 @@ export default function App() {
 
     return result.verses.map((v) => `${v.verse}. ${v.text}`).join("\n");
   }, [result]);
+  const previewVerseText = result.found ? verseText : "";
 
   const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
   const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
@@ -297,6 +301,35 @@ export default function App() {
       renderSource: customBackgroundSource
     });
   }, [backgroundMode, customBackgroundPath, customBackgroundSource]);
+
+  useEffect(() => {
+    if (!openTopMenu) {
+      return;
+    }
+
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      if (!target.closest(".menu-cluster")) {
+        setOpenTopMenu(null);
+      }
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpenTopMenu(null);
+      }
+    };
+
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onEscape);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onEscape);
+    };
+  }, [openTopMenu]);
 
   useEffect(() => {
     if (!isPresentationMode) {
@@ -1207,91 +1240,156 @@ export default function App() {
     <>
       <div className={`app-shell ${isPresentationMode ? "app-shell--presentation-active" : ""}`}>
         <header className="app-shell__topbar">
-          <div className="brand-block">
+          <div className="menu-cluster" role="menubar" aria-label="Application menu">
+            <div
+              className="app-menu"
+              onMouseEnter={() => {
+                if (openTopMenu) setOpenTopMenu("file");
+              }}
+            >
+              <button
+                type="button"
+                className={`app-menu__trigger ${openTopMenu === "file" ? "app-menu__trigger--open" : ""}`}
+                onClick={() => setOpenTopMenu((current) => (current === "file" ? null : "file"))}
+              >
+                File
+              </button>
+              {openTopMenu === "file" ? (
+                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
+                  <button type="button" onClick={() => void handleOpenProjectorView()}>{isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}</button>
+                  <button type="button" onClick={() => void exportSessionLog("txt")}>Export Session TXT</button>
+                  <button type="button" onClick={() => void exportSessionLog("csv")}>Export Session CSV</button>
+                </div>
+              ) : null}
+            </div>
+            <div
+              className="app-menu"
+              onMouseEnter={() => {
+                if (openTopMenu) setOpenTopMenu("view");
+              }}
+            >
+              <button
+                type="button"
+                className={`app-menu__trigger ${openTopMenu === "view" ? "app-menu__trigger--open" : ""}`}
+                onClick={() => setOpenTopMenu((current) => (current === "view" ? null : "view"))}
+              >
+                View
+              </button>
+              {openTopMenu === "view" ? (
+                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
+                  <button type="button" onClick={() => setActiveDialog("history")}>History / Session</button>
+                  <button type="button" onClick={() => setActiveDialog("settings")}>Theme, Font & Background</button>
+                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Help</button>
+                </div>
+              ) : null}
+            </div>
+            <div
+              className="app-menu"
+              onMouseEnter={() => {
+                if (openTopMenu) setOpenTopMenu("presentation");
+              }}
+            >
+              <button
+                type="button"
+                className={`app-menu__trigger ${openTopMenu === "presentation" ? "app-menu__trigger--open" : ""}`}
+                onClick={() => setOpenTopMenu((current) => (current === "presentation" ? null : "presentation"))}
+              >
+                Presentation
+              </button>
+              {openTopMenu === "presentation" ? (
+                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
+                  <button type="button" onClick={() => void togglePresentationMode()}>{isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}</button>
+                  <button type="button" onClick={toggleDisplayMode}>{displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}</button>
+                  <button type="button" onClick={handleRepresentCurrentVerse}>Re-present Current Verse</button>
+                  <button type="button" onClick={handleClearCurrentVerse}>Clear Current Verse</button>
+                </div>
+              ) : null}
+            </div>
+            <div
+              className="app-menu"
+              onMouseEnter={() => {
+                if (openTopMenu) setOpenTopMenu("tools");
+              }}
+            >
+              <button
+                type="button"
+                className={`app-menu__trigger ${openTopMenu === "tools" ? "app-menu__trigger--open" : ""}`}
+                onClick={() => setOpenTopMenu((current) => (current === "tools" ? null : "tools"))}
+              >
+                Tools
+              </button>
+              {openTopMenu === "tools" ? (
+                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
+                  <button type="button" onClick={() => setActiveDialog("settings")}>Settings</button>
+                  <button type="button" onClick={() => setActiveDialog("debug")}>Debug / Advanced</button>
+                  <button type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
+                </div>
+              ) : null}
+            </div>
+            <div
+              className="app-menu"
+              onMouseEnter={() => {
+                if (openTopMenu) setOpenTopMenu("help");
+              }}
+            >
+              <button
+                type="button"
+                className={`app-menu__trigger ${openTopMenu === "help" ? "app-menu__trigger--open" : ""}`}
+                onClick={() => setOpenTopMenu((current) => (current === "help" ? null : "help"))}
+              >
+                Help
+              </button>
+              {openTopMenu === "help" ? (
+                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
+                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Start</button>
+                  <button type="button" onClick={() => setActiveDialog("history")}>Operator Session Center</button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="brand-block brand-block--center">
             <img src={APP_BRANDING.logoUrl} alt={`${APP_BRANDING.productName} logo`} className="brand-block__logo" />
             <div>
               <p className="eyebrow">{APP_BRANDING.productName.toUpperCase()}</p>
               <h1>{APP_BRANDING.subtitle}</h1>
             </div>
           </div>
-          <div className="topbar-actions topbar-actions--desktop">
-            <div className="menu-cluster" role="menubar" aria-label="Application menu">
-              <details className="app-menu">
-                <summary>File</summary>
-                <div className="app-menu__panel">
-                  <button type="button" onClick={() => void handleOpenProjectorView()}>{isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}</button>
-                  <button type="button" onClick={() => void exportSessionLog("txt")}>Export Session TXT</button>
-                  <button type="button" onClick={() => void exportSessionLog("csv")}>Export Session CSV</button>
-                </div>
-              </details>
-              <details className="app-menu">
-                <summary>View</summary>
-                <div className="app-menu__panel">
-                  <button type="button" onClick={() => setActiveDialog("history")}>History / Session</button>
-                  <button type="button" onClick={() => setActiveDialog("settings")}>Theme, Font & Background</button>
-                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Help</button>
-                </div>
-              </details>
-              <details className="app-menu">
-                <summary>Presentation</summary>
-                <div className="app-menu__panel">
-                  <button type="button" onClick={() => void togglePresentationMode()}>{isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}</button>
-                  <button type="button" onClick={toggleDisplayMode}>{displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}</button>
-                  <button type="button" onClick={handleRepresentCurrentVerse}>Re-present Current Verse</button>
-                  <button type="button" onClick={handleClearCurrentVerse}>Clear Current Verse</button>
-                </div>
-              </details>
-              <details className="app-menu">
-                <summary>Tools</summary>
-                <div className="app-menu__panel">
-                  <button type="button" onClick={() => setActiveDialog("settings")}>Settings</button>
-                  <button type="button" onClick={() => setActiveDialog("debug")}>Debug / Advanced</button>
-                  <button type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
-                </div>
-              </details>
-              <details className="app-menu">
-                <summary>Help</summary>
-                <div className="app-menu__panel">
-                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Start</button>
-                  <button type="button" onClick={() => setActiveDialog("history")}>Operator Session Center</button>
-                </div>
-              </details>
+
+          <div className="topbar-status">
+            <label className="compact-control" htmlFor="topbar-translation-select">
+              Translation
+              <select id="topbar-translation-select" value={selectedTranslation} onChange={(e) => setSelectedTranslation(e.target.value)}>
+                <option value="KJV">KJV</option>
+              </select>
+            </label>
+            <label className="compact-control" htmlFor="topbar-listening-select">
+              Listening
+              <select id="topbar-listening-select" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
+                <option value="manual">Manual</option>
+                <option value="auto">Auto</option>
+              </select>
+            </label>
+            <div className="service-pill">State: {listeningStateLabel}</div>
+            <div className="service-pill">Transcription: {listening ? "Connected" : "Standby"}</div>
+            <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
+              <span className="detection-dot" aria-hidden="true" />
+              Detection
             </div>
-            <div className="topbar-status">
-              <label className="compact-control" htmlFor="topbar-translation-select">
-                Translation
-                <select id="topbar-translation-select" value={selectedTranslation} onChange={(e) => setSelectedTranslation(e.target.value)}>
-                  <option value="KJV">KJV</option>
-                </select>
-              </label>
-              <label className="compact-control" htmlFor="topbar-listening-select">
-                Listening
-                <select id="topbar-listening-select" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
-                  <option value="manual">Manual</option>
-                  <option value="auto">Auto</option>
-                </select>
-              </label>
-              <div className="service-pill">State: {listeningStateLabel}</div>
-              <div className="service-pill">Transcription: {listening ? "Connected" : "Standby"}</div>
-              <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
-                <span className="detection-dot" aria-hidden="true" />
-                Detection Ready
-              </div>
-              {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
-              <button
-                className={`present-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
-                onClick={() => {
-                  if (isListeningModeActive) {
-                    handleStopListening();
-                  } else {
-                    void handleStartListening();
-                  }
-                }}
-                disabled={isLoading}
-              >
-                {isListeningModeActive ? "Stop Listening" : "Start Listening"}
-              </button>
-            </div>
+            {isRestoringStartupState ? <div className="service-pill">Restoring…</div> : null}
+            <button
+              className={`present-button topbar-listen-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
+              onClick={() => {
+                if (isListeningModeActive) {
+                  handleStopListening();
+                } else {
+                  void handleStartListening();
+                }
+              }}
+              disabled={isLoading}
+            >
+              {isListeningModeActive ? "Stop" : "Start"}
+            </button>
           </div>
         </header>
 
@@ -1337,7 +1435,7 @@ export default function App() {
                     className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}
                     style={{ fontFamily: getPresentationFontCssFamily(previewFontFamily), fontSize: `${previewFontSizePx}px` }}
                   >
-                    {verseText}
+                    {previewVerseText}
                   </pre>
                 </PresentationSurface>
                 {didFullscreenHitAutoFitMinimum && result.found ? (
@@ -1404,7 +1502,9 @@ export default function App() {
               <p className="mic-status-line">Current transcript: {transcript.trim() || "Awaiting speech input..."}</p>
               {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
               {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
-              <section className="quick-actions-panel">
+              <details className="compact-details" open={supportPanelExpanded} onToggle={(event) => setSupportPanelExpanded(event.currentTarget.open)}>
+                <summary>Open support details</summary>
+                <section className="quick-actions-panel">
                 <h3>Paraphrase Matches</h3>
                 <p className="history-empty">Paraphrase support lane remains available for future inference logic.</p>
               </section>
@@ -1432,13 +1532,16 @@ export default function App() {
                   <div><dt>Translation</dt><dd>{result.translation}</dd></div>
                   <div><dt>Theme</dt><dd>{result.theme}</dd></div>
                   <div><dt>Status</dt><dd>{result.found ? "Loaded" : "No Result"}</dd></div>
-                </dl>
-              </section>
+                  </dl>
+                </section>
+              </details>
             </div>
           </section>
         </div>
 
-        <div className="workspace-grid workspace-grid--bottom">
+        <details className="compact-details compact-details--secondary">
+          <summary>Secondary operator panels</summary>
+          <div className="workspace-grid workspace-grid--bottom">
           <section className="panel-card">
             <header className="panel-card__header"><h2>Session Stats</h2></header>
             <div className="panel-card__body">
@@ -1485,7 +1588,8 @@ export default function App() {
               </ul>
             )}
           </section>
-        </div>
+          </div>
+        </details>
       </div>
 
       {activeDialog ? (
