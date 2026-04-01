@@ -1,4 +1,4 @@
-import { readBinaryFile } from "@tauri-apps/api/fs";
+import { convertFileSrc } from "@tauri-apps/api/tauri";
 import type { PresentationFontFamily } from "./projectorSync";
 
 export const PRESENTATION_FONT_OPTIONS: Array<{ value: PresentationFontFamily; label: string; cssFamily: string }> = [
@@ -51,16 +51,8 @@ function getImageMimeType(path: string): string {
   }
 }
 
-function toBase64(data: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-
-  for (let offset = 0; offset < data.length; offset += chunkSize) {
-    const chunk = data.subarray(offset, offset + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
+export function isSupportedBackgroundImagePath(path: string): boolean {
+  return getImageMimeType(path) !== "application/octet-stream";
 }
 
 export async function getBackgroundImageSource(path: string | null): Promise<string | null> {
@@ -78,13 +70,15 @@ export async function getBackgroundImageSource(path: string | null): Promise<str
   }
 
   const normalizedPath = normalizeLocalFilePath(trimmed);
+  if (!isSupportedBackgroundImagePath(normalizedPath)) {
+    console.warn("[presentation] unsupported background image extension", { path: normalizedPath });
+    return null;
+  }
 
   try {
-    const imageBytes = await readBinaryFile(normalizedPath);
-    const mimeType = getImageMimeType(normalizedPath);
-    return `data:${mimeType};base64,${toBase64(imageBytes)}`;
+    return convertFileSrc(normalizedPath);
   } catch (error) {
-    console.warn("[presentation] failed to load background image bytes", error);
+    console.warn("[presentation] failed to resolve background image source", error);
     return null;
   }
 }
