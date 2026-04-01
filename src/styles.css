@@ -369,6 +369,10 @@ input[type="range"] { padding: 0; }
 .paraphrase-list {
   max-height: none;
 }
+.live-suggestions-block {
+  display: grid;
+  gap: .45rem;
+  margin-bottom: .7rem;
 .live-suggestions-section {
   display: grid;
   gap: .45rem;

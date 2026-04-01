@@ -49,6 +49,13 @@ import {
   type SessionLogEntry,
   type SessionSourceType
 } from "./features/history/sessionLog";
+import {
+  buildTranscriptSuggestionId,
+  extractTranscriptSuggestionCandidate,
+  getStrengthLabel,
+  rankTranscriptParaphraseMatches,
+  type TranscriptSuggestion
+} from "./features/search/liveTranscriptParaphrase";
 import { APP_BRANDING } from "./branding";
 
 type HistoryItem = {
@@ -76,6 +83,8 @@ type DetectionQueueItem = {
   autoPresented: boolean;
 };
 
+type LiveSuggestionState = TranscriptSuggestion & {
+  topReference: string;
 type LiveParaphraseSuggestion = ParaphraseMatch & {
   id: string;
   sourceAnchor: string;
@@ -195,6 +204,7 @@ export default function App() {
   const [showParaphraseLane, setShowParaphraseLane] = useState(true);
   const [paraphraseInput, setParaphraseInput] = useState("");
   const [paraphraseMatches, setParaphraseMatches] = useState<ParaphraseMatch[]>([]);
+  const [liveTranscriptSuggestions, setLiveTranscriptSuggestions] = useState<LiveSuggestionState[]>([]);
   const [liveParaphraseSuggestions, setLiveParaphraseSuggestions] = useState<LiveParaphraseSuggestion[]>([]);
   const [isLiveParaphraseLoading, setIsLiveParaphraseLoading] = useState(false);
   const [paraphraseNotice, setParaphraseNotice] = useState<string | null>(null);
@@ -208,6 +218,7 @@ export default function App() {
   const lastLiveParaphraseCaptureRef = useRef<{ key: string; timestampMs: number } | null>(null);
   const autoListeningSessionRef = useRef(false);
   const interimCaptureRef = useRef<{ transcript: string; normalizedReference: string; timestampMs: number } | null>(null);
+  const lastLiveSuggestionRef = useRef<{ suggestionId: string; timestampMs: number } | null>(null);
   const autoBookAnchorRef = useRef<{ canonicalBook: string; timestampMs: number } | null>(null);
   const fullscreenViewportRef = useRef<HTMLDivElement | null>(null);
   const fullscreenContentRef = useRef<HTMLDivElement | null>(null);
@@ -619,11 +630,48 @@ export default function App() {
     }
   }, [paraphraseInput, showParaphraseLane]);
 
+  const queueLiveTranscriptSuggestion = useCallback(
   const runLiveParaphraseSuggestions = useCallback(
     async (spokenTranscript: string) => {
       if (!showParaphraseLane) {
         return;
       }
+
+      const candidate = extractTranscriptSuggestionCandidate(spokenTranscript);
+      if (!candidate) {
+        return;
+      }
+
+      const suggestionId = buildTranscriptSuggestionId(candidate);
+      const now = Date.now();
+      const previous = lastLiveSuggestionRef.current;
+      if (previous && previous.suggestionId === suggestionId && now - previous.timestampMs < AUTO_SEARCH_DUPLICATE_COOLDOWN_MS) {
+        return;
+      }
+
+      const matches = await searchKjvParaphrase(candidate.searchPhrase, 8);
+      if (!matches.length) {
+        return;
+      }
+
+      const rankedMatches = rankTranscriptParaphraseMatches(matches, candidate).slice(0, 5);
+      const topReference = rankedMatches[0]?.reference ?? "Unknown";
+      const confidenceLabel = `${getStrengthLabel(candidate.strength)} • suggested from transcript`;
+      const nextSuggestion: LiveSuggestionState = {
+        id: `${suggestionId}:${now}`,
+        transcript: spokenTranscript.trim(),
+        anchorLabel: candidate.anchorLabel,
+        searchPhrase: candidate.searchPhrase,
+        strength: candidate.strength,
+        confidenceLabel,
+        matches: rankedMatches,
+        createdAtMs: now,
+        topReference
+      };
+
+      lastLiveSuggestionRef.current = { suggestionId, timestampMs: now };
+      setLiveTranscriptSuggestions((existing) => [nextSuggestion, ...existing].slice(0, 12));
+      setParaphraseNotice(`${getStrengthLabel(candidate.strength)} transcript suggestion: ${candidate.anchorLabel}`);
       const anchorPlan = buildTranscriptAnchorPlan(spokenTranscript);
       if (!anchorPlan.shouldSearch || anchorPlan.anchors.length === 0) {
         setIsLiveParaphraseLoading(false);
@@ -754,6 +802,7 @@ export default function App() {
   const runSpeechSearch = useCallback(
     async (spokenTranscript: string) => {
       if (!spokenTranscript.trim()) return;
+      void queueLiveTranscriptSuggestion(spokenTranscript);
 
       const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
       setSpeechDebug(normalized);
@@ -834,7 +883,7 @@ export default function App() {
         setListeningState("waiting_for_speech");
       }
     },
-    [detectionDisplayMode, handleSearch, listeningMode, queueDetectedReference, triggerDetectionPulse]
+    [detectionDisplayMode, handleSearch, listeningMode, queueDetectedReference, queueLiveTranscriptSuggestion, triggerDetectionPulse]
   );
 
   const tryAutoCaptureCandidate = useCallback(
@@ -842,6 +891,7 @@ export default function App() {
       if (listeningMode !== "auto") {
         return false;
       }
+      void queueLiveTranscriptSuggestion(spokenTranscript);
 
       const normalized = normalizeTranscriptToReference(spokenTranscript, "KJV");
       const hasBookAnchor = Boolean(normalized.canonicalBook) && normalized.confidence >= AUTO_BOOK_ANCHOR_CONFIDENCE;
@@ -909,7 +959,7 @@ export default function App() {
 
       return true;
     },
-    [detectionDisplayMode, handleSearch, listening, listeningMode, queueDetectedReference, stopListening, triggerDetectionPulse]
+    [detectionDisplayMode, handleSearch, listening, listeningMode, queueDetectedReference, queueLiveTranscriptSuggestion, stopListening, triggerDetectionPulse]
   );
 
   const exportSessionLog = useCallback(
@@ -1099,6 +1149,14 @@ export default function App() {
       setListeningState("waiting_for_speech");
     }
   }, [isListeningModeActive, listeningState, micState, transcript]);
+
+  useEffect(() => {
+    if (showParaphraseLane) {
+      return;
+    }
+    setLiveTranscriptSuggestions([]);
+    lastLiveSuggestionRef.current = null;
+  }, [showParaphraseLane]);
 
   useEffect(() => {
     if (micState !== "success") return;
@@ -1701,6 +1759,32 @@ export default function App() {
               {showParaphraseLane ? (
                 <>
                   {paraphraseNotice ? <p className="mic-status-line">{paraphraseNotice}</p> : null}
+                  <div className="live-suggestions-block">
+                    <h3 className="field-label">Live Suggestions (from transcript)</h3>
+                    {liveTranscriptSuggestions.length === 0 ? (
+                      <p className="history-empty">Waiting for scripture-like phrases from live transcript.</p>
+                    ) : (
+                      <ul className="detected-list paraphrase-list">
+                        {liveTranscriptSuggestions.map((suggestion) => (
+                          <li key={suggestion.id} className="detected-list__item">
+                            <div className="detected-list__row">
+                              <span className="history-list__reference">{suggestion.topReference}</span>
+                              <span className="confidence-pill">{suggestion.confidenceLabel}</span>
+                            </div>
+                            <p className="history-list__meta">{suggestion.anchorLabel} • {new Date(suggestion.createdAtMs).toLocaleTimeString()}</p>
+                            <p className="detected-list__preview">“{suggestion.transcript}”</p>
+                            <p className="history-list__meta">Top match: {suggestion.matches[0]?.reference ?? "Unknown"}</p>
+                            {isManualOperatorMode ? (
+                              <button
+                                className="present-button present-button--secondary detected-list__action"
+                                type="button"
+                                onClick={() => {
+                                  const reference = suggestion.matches[0]?.reference;
+                                  if (!reference) return;
+                                  void handleSearch(reference, "typed");
+                                }}
+                                disabled={!suggestion.matches[0]?.reference}
+                              >
                   <div className="live-suggestions-section">
                     <div className="live-suggestions-section__header">
                       <h3>Live Suggestions</h3>
