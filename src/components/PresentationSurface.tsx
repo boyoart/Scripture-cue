@@ -1,5 +1,5 @@
 import { type ComponentPropsWithRef, type ComponentPropsWithoutRef, type ElementType, type PropsWithChildren } from "react";
-import type { PresentationBackgroundMode } from "../features/display/projectorSync";
+import type { PresentationBackgroundMode, PresentationGradientDirection } from "../features/display/projectorSync";
 
 type PresentationSurfaceProps<T extends ElementType> = PropsWithChildren<{
   as?: T;
@@ -7,6 +7,10 @@ type PresentationSurfaceProps<T extends ElementType> = PropsWithChildren<{
   contentClassName: string;
   backgroundMode: PresentationBackgroundMode;
   backgroundSource: string | null;
+  solidBackgroundColor: string;
+  gradientStartColor: string;
+  gradientEndColor: string;
+  gradientDirection: PresentationGradientDirection;
   blurBackgroundImage: boolean;
   dimOpacity: number;
   containerProps?: Omit<ComponentPropsWithoutRef<T>, "as" | "className" | "children"> & Record<string, unknown>;
@@ -19,6 +23,10 @@ export default function PresentationSurface<T extends ElementType = "div">({
   contentClassName,
   backgroundMode,
   backgroundSource,
+  solidBackgroundColor,
+  gradientStartColor,
+  gradientEndColor,
+  gradientDirection,
   blurBackgroundImage,
   dimOpacity,
   containerProps,
@@ -27,11 +35,21 @@ export default function PresentationSurface<T extends ElementType = "div">({
 }: PresentationSurfaceProps<T>) {
   const Component = (as ?? "div") as ElementType;
   const shouldRenderImage = backgroundMode === "custom-image" && Boolean(backgroundSource);
+  const gradientCssDirection = gradientDirection === "left-right" ? "90deg" : gradientDirection === "diagonal" ? "135deg" : "180deg";
+  const backgroundStyle =
+    backgroundMode === "solid-light"
+      ? { backgroundColor: "#f5f7ff" }
+      : backgroundMode === "solid-custom"
+        ? { backgroundColor: solidBackgroundColor }
+        : backgroundMode === "gradient-two-color"
+          ? { backgroundImage: `linear-gradient(${gradientCssDirection}, ${gradientStartColor}, ${gradientEndColor})` }
+          : {};
 
   return (
     <Component className={`presentation-surface ${className}`.trim()} {...containerProps}>
       <div
         className={`presentation-surface__background-layer ${shouldRenderImage ? "presentation-surface__background-layer--image" : "presentation-surface__background-layer--solid"} ${shouldRenderImage && blurBackgroundImage ? "presentation-surface__background-layer--blur" : ""}`.trim()}
+        style={backgroundStyle}
         aria-hidden="true"
       >
         {shouldRenderImage && backgroundSource ? (
