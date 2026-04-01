@@ -280,6 +280,10 @@ export default function App() {
 
   const hasCustomPresentationBackground = presentationBackgroundState.backgroundMode === "custom-image" &&
     Boolean(presentationBackgroundState.customBackgroundSource);
+  const effectivePresentationBackgroundMode: PresentationBackgroundMode = presentationBackgroundState.backgroundMode === "custom-image" &&
+    !presentationBackgroundState.customBackgroundSource
+    ? "solid-dark"
+    : presentationBackgroundState.backgroundMode;
   const previewDimOpacity = hasCustomPresentationBackground ? Math.min(presentationBackgroundState.backgroundDimStrength, 0.8) : 0.35;
   const fullscreenDimOpacity = presentationBackgroundState.backgroundMode === "custom-image"
     ? Math.min(presentationBackgroundState.backgroundDimStrength, 0.8)
@@ -304,7 +308,7 @@ export default function App() {
       referencePlacement,
       useSafeMargins,
       displayMode,
-      backgroundMode: presentationBackgroundState.backgroundMode,
+      backgroundMode: effectivePresentationBackgroundMode,
       customBackgroundPath: presentationBackgroundState.customBackgroundPath,
       customBackgroundSource: presentationBackgroundState.customBackgroundSource,
       customBackgroundError: presentationBackgroundState.customBackgroundError,
@@ -330,6 +334,7 @@ export default function App() {
       useSafeMargins,
       displayMode,
       presentationBackgroundState,
+      effectivePresentationBackgroundMode,
       previewFontFamily,
       previewFontSizePx,
       projectionFontFamily,
@@ -388,7 +393,6 @@ export default function App() {
         } else {
           setCustomBackgroundError("Unable to load the selected background image. Falling back to solid dark.");
           setCustomBackgroundSource(null);
-          setBackgroundMode("solid-dark");
           setStatus("Background load failed");
           setSessionNotice("Background image failed to load. Falling back to solid dark.");
         }
@@ -1776,7 +1780,7 @@ export default function App() {
                 as="div"
                 className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
                 contentClassName="verse-preview-shell__content"
-                backgroundMode={presentationBackgroundState.backgroundMode}
+                backgroundMode={effectivePresentationBackgroundMode}
                 backgroundSource={presentationBackgroundState.customBackgroundSource}
                 solidBackgroundColor={presentationBackgroundState.solidBackgroundColor}
                 gradientStartColor={presentationBackgroundState.gradientStartColor}

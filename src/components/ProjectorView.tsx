@@ -128,6 +128,9 @@ export default function ProjectorView() {
 
     return state.customBackgroundSource;
   }, [state.backgroundMode, state.customBackgroundSource]);
+  const effectiveBackgroundMode = state.backgroundMode === "custom-image" && !backgroundImageSrc
+    ? "solid-dark"
+    : state.backgroundMode;
 
   const dimOpacity = state.backgroundMode === "custom-image" ? Math.min(state.backgroundDimStrength, 0.8) : 0.35;
   const isTransparentLowerThird = state.displayMode === "lower-third" && state.lowerThirdOutputMode === "transparent";
@@ -174,7 +177,7 @@ export default function ProjectorView() {
       as="main"
       className={`projector-screen ${isTransparentLowerThird ? "projector-screen--transparent-lower-third" : ""} ${isChromaLowerThird ? "projector-screen--chroma-lower-third" : ""}`}
       contentClassName={`projector-screen__content projector-screen__content--${state.displayMode} ${state.useSafeMargins ? "projector-screen__content--safe" : ""}`}
-      backgroundMode={state.backgroundMode}
+      backgroundMode={effectiveBackgroundMode}
       backgroundSource={backgroundImageSrc}
       blurBackgroundImage={state.blurBackgroundImage}
       solidBackgroundColor={state.solidBackgroundColor}
