@@ -959,6 +959,7 @@ export default function App() {
   const liveConfidencePercent = speechDebug ? Math.round(speechDebug.confidence * 100) : null;
   const uniqueHistoryReferences = useMemo(() => [...new Set(history.map((item) => item.reference))], [history]);
   const topDetectedMatches = useMemo(() => uniqueHistoryReferences.slice(0, 6), [uniqueHistoryReferences]);
+  const recentSessionEntries = useMemo(() => sessionLog.slice(0, 5), [sessionLog]);
   const historyReferenceCursor = useMemo(() => Math.max(0, uniqueHistoryReferences.indexOf(activeReference)), [activeReference, uniqueHistoryReferences]);
 
   const handleNavigateHistoryReference = useCallback(
@@ -1213,74 +1214,92 @@ export default function App() {
               <h1>{APP_BRANDING.subtitle}</h1>
             </div>
           </div>
-          <div className="topbar-actions">
-            <div className="service-pill">Translation: {selectedTranslation}</div>
-            <div className="service-pill">Listening: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
-            <div className="service-pill">Connection: {listening ? "Live" : "Standby"}</div>
-            <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
-              <span className="detection-dot" aria-hidden="true" />
-              Detection Ready
+          <div className="topbar-actions topbar-actions--desktop">
+            <div className="menu-cluster" role="menubar" aria-label="Application menu">
+              <details className="app-menu">
+                <summary>File</summary>
+                <div className="app-menu__panel">
+                  <button type="button" onClick={() => void handleOpenProjectorView()}>{isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}</button>
+                  <button type="button" onClick={() => void exportSessionLog("txt")}>Export Session TXT</button>
+                  <button type="button" onClick={() => void exportSessionLog("csv")}>Export Session CSV</button>
+                </div>
+              </details>
+              <details className="app-menu">
+                <summary>View</summary>
+                <div className="app-menu__panel">
+                  <button type="button" onClick={() => setActiveDialog("history")}>History / Session</button>
+                  <button type="button" onClick={() => setActiveDialog("settings")}>Theme, Font & Background</button>
+                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Help</button>
+                </div>
+              </details>
+              <details className="app-menu">
+                <summary>Presentation</summary>
+                <div className="app-menu__panel">
+                  <button type="button" onClick={() => void togglePresentationMode()}>{isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}</button>
+                  <button type="button" onClick={toggleDisplayMode}>{displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}</button>
+                  <button type="button" onClick={handleRepresentCurrentVerse}>Re-present Current Verse</button>
+                  <button type="button" onClick={handleClearCurrentVerse}>Clear Current Verse</button>
+                </div>
+              </details>
+              <details className="app-menu">
+                <summary>Tools</summary>
+                <div className="app-menu__panel">
+                  <button type="button" onClick={() => setActiveDialog("settings")}>Settings</button>
+                  <button type="button" onClick={() => setActiveDialog("debug")}>Debug / Advanced</button>
+                  <button type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
+                </div>
+              </details>
+              <details className="app-menu">
+                <summary>Help</summary>
+                <div className="app-menu__panel">
+                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Start</button>
+                  <button type="button" onClick={() => setActiveDialog("history")}>Operator Session Center</button>
+                </div>
+              </details>
             </div>
-            <div className="service-pill">Listening State: {listeningStateLabel}</div>
-            <div className="service-pill">Display: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
-            {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
-            <button className="present-button present-button--secondary" onClick={() => void handleOpenProjectorView()} disabled={isLoading}>
-              {isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}
-            </button>
-            <button className="present-button present-button--secondary" onClick={() => void togglePresentationMode()} disabled={isLoading}>
-              {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
-            </button>
-            <button className="present-button present-button--secondary" type="button" onClick={toggleDisplayMode}>
-              {displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}
-            </button>
-            <button
-              className={`present-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
-              onClick={() => {
-                if (isListeningModeActive) {
-                  handleStopListening();
-                } else {
-                  void handleStartListening();
-                }
-              }}
-              disabled={isLoading}
-            >
-              {isListeningModeActive ? "Stop Listening" : "Start Listening"}
-            </button>
-            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>
-              Settings
-            </button>
-            <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("history")}>
-              History / Session
-            </button>
+            <div className="topbar-status">
+              <label className="compact-control" htmlFor="topbar-translation-select">
+                Translation
+                <select id="topbar-translation-select" value={selectedTranslation} onChange={(e) => setSelectedTranslation(e.target.value)}>
+                  <option value="KJV">KJV</option>
+                </select>
+              </label>
+              <label className="compact-control" htmlFor="topbar-listening-select">
+                Listening
+                <select id="topbar-listening-select" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
+                  <option value="manual">Manual</option>
+                  <option value="auto">Auto</option>
+                </select>
+              </label>
+              <div className="service-pill">State: {listeningStateLabel}</div>
+              <div className="service-pill">Transcription: {listening ? "Connected" : "Standby"}</div>
+              <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
+                <span className="detection-dot" aria-hidden="true" />
+                Detection Ready
+              </div>
+              {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
+              <button
+                className={`present-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
+                onClick={() => {
+                  if (isListeningModeActive) {
+                    handleStopListening();
+                  } else {
+                    void handleStartListening();
+                  }
+                }}
+                disabled={isLoading}
+              >
+                {isListeningModeActive ? "Stop Listening" : "Start Listening"}
+              </button>
+            </div>
           </div>
         </header>
 
         <div className="workspace-grid workspace-grid--dashboard">
-          <section className="panel-card">
-            <header className="panel-card__header">
-              <h2>Live Transcript Feed</h2>
-              <p>Compact live listening monitor with scripture detection confidence.</p>
-            </header>
-            <div className="panel-card__body search-controls">
-              <MicrophoneMeter bars={bars} micState={micState} />
-              <p className="mic-status-line">Current transcript: {transcript.trim() || "Awaiting speech input..."}</p>
-              {speechDebug ? (
-                <dl className="metadata-grid">
-                  <div><dt>Detected</dt><dd>{speechDebug.normalizedReference}</dd></div>
-                  <div><dt>Confidence</dt><dd>{liveConfidencePercent}%</dd></div>
-                  <div><dt>Match source</dt><dd>{speechDebug.debug.bookMatchSource}</dd></div>
-                  <div><dt>Ambiguity</dt><dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Manual review"}</dd></div>
-                </dl>
-              ) : <p className="history-empty">No spoken detection yet for this session.</p>}
-              {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
-              {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
-            </div>
-          </section>
-
           <section className="panel-card preview-card">
             <header className="panel-card__header">
-              <h2>Main Verse Preview</h2>
-              <p>Live scripture card with direct operator actions.</p>
+              <h2>Live Scripture Workspace</h2>
+              <p>Primary scripture monitor for lookup, confidence preview, and display actions.</p>
             </header>
             <div className="panel-card__body">
               <div className="search-controls">
@@ -1326,7 +1345,7 @@ export default function App() {
                     Auto-fit hit the minimum projection size for this passage. Split into multiple slides if readability is low.
                   </p>
                 ) : null}
-                <div className="service-actions">
+                <div className="service-actions service-actions--main">
                   <button className="present-button" type="button" onClick={() => void toggleProjectorView()}>
                     {isProjectorWindowOpen ? "Focus Display" : "Show on Display"}
                   </button>
@@ -1337,7 +1356,7 @@ export default function App() {
                     Clear
                   </button>
                 </div>
-                <div className="service-actions">
+                <div className="service-actions service-actions--compact">
                   <button className="present-button present-button--secondary" type="button" onClick={() => void handleNavigateHistoryReference("previous")} disabled={historyReferenceCursor <= 0}>
                     Previous Verse
                   </button>
@@ -1351,22 +1370,9 @@ export default function App() {
           <section className="panel-card">
             <header className="panel-card__header">
               <h2>Detected Verse Matches</h2>
-              <p>Recent reference detections with one-click present actions.</p>
+              <p>Detection review queue with fast recall and confidence details.</p>
             </header>
             <div className="panel-card__body search-controls">
-              <div className="translation-row">
-                <label className="field-label" htmlFor="translation-select">Translation</label>
-                <select id="translation-select" value={selectedTranslation} onChange={(e) => setSelectedTranslation(e.target.value)}>
-                  <option value="KJV">KJV</option>
-                </select>
-              </div>
-              <div className="translation-row">
-                <label className="field-label" htmlFor="listening-mode-select-inline">Listening mode</label>
-                <select id="listening-mode-select-inline" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
-                  <option value="manual">Manual</option>
-                  <option value="auto">Auto</option>
-                </select>
-              </div>
               {topDetectedMatches.length === 0 ? <p className="history-empty">Detected verse matches will appear here.</p> : (
                 <ul className="history-list">
                   {topDetectedMatches.map((match) => (
@@ -1379,9 +1385,46 @@ export default function App() {
                   ))}
                 </ul>
               )}
+              <dl className="metadata-grid">
+                <div><dt>Last detected</dt><dd>{speechDebug?.normalizedReference ?? "Awaiting detection"}</dd></div>
+                <div><dt>Confidence</dt><dd>{speechDebug ? `${liveConfidencePercent}%` : "N/A"}</dd></div>
+                <div><dt>Match source</dt><dd>{speechDebug?.debug.bookMatchSource ?? "None"}</dd></div>
+                <div><dt>Ambiguity</dt><dd>{speechDebug ? (speechDebug.ambiguity === "clear" ? "Clear" : "Manual review") : "N/A"}</dd></div>
+              </dl>
+            </div>
+          </section>
+
+          <section className="panel-card">
+            <header className="panel-card__header">
+              <h2>Live Detection & Support</h2>
+              <p>Speech feed, paraphrase placeholder, and operator activity context.</p>
+            </header>
+            <div className="panel-card__body search-controls">
+              <MicrophoneMeter bars={bars} micState={micState} />
+              <p className="mic-status-line">Current transcript: {transcript.trim() || "Awaiting speech input..."}</p>
+              {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
+              {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
               <section className="quick-actions-panel">
                 <h3>Paraphrase Matches</h3>
-                <p className="history-empty">Paraphrase detection placeholder ready for future inference logic.</p>
+                <p className="history-empty">Paraphrase support lane remains available for future inference logic.</p>
+              </section>
+              <section className="quick-actions-panel">
+                <h3>Recent Activity Feed</h3>
+                {recentSessionEntries.length === 0 ? (
+                  <p className="history-empty">No verses presented in this session yet.</p>
+                ) : (
+                  <ul className="history-list">
+                    {recentSessionEntries.map((entry) => (
+                      <li key={entry.id}>
+                        <button className="history-list__item" type="button" onClick={() => void handleRecallSessionEntry(entry)}>
+                          <span className="history-list__reference">{entry.reference}</span>
+                          <span className="history-list__meta">Source: {entry.sourceType}</span>
+                          <span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </section>
               <section className="metadata-strip-card panel-card">
                 <dl className="metadata-grid">
@@ -1411,12 +1454,11 @@ export default function App() {
           <section className="panel-card">
             <header className="panel-card__header"><h2>Manual Controls</h2></header>
             <div className="panel-card__body search-controls">
-              <div className="service-actions">
-                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("history")}>History / Session</button>
-                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("help")}>Help</button>
-                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("debug")}>Debug Tools</button>
-                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>Settings</button>
+              <div className="service-actions service-actions--compact">
+                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("history")}>Open Session Center</button>
+                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>Open Settings</button>
               </div>
+              <p className="history-empty">Secondary controls moved to the top desktop menu for cleaner operation flow.</p>
             </div>
           </section>
 
