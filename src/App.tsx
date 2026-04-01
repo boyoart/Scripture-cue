@@ -1868,7 +1868,7 @@ export default function App() {
                   {paraphraseNotice ? <p className="mic-status-line">{paraphraseNotice}</p> : null}
                   <section className="paraphrase-section">
                     <label className="field-label" htmlFor="paraphrase-panel-input">Search by Paraphrase</label>
-                    <div className="search-row paraphrase-search-row">
+                    <div className="paraphrase-search-row">
                       <input
                         className="paraphrase-search-row__input"
                         id="paraphrase-panel-input"
@@ -1905,7 +1905,7 @@ export default function App() {
                       {liveTranscriptSuggestions.length === 0 ? (
                         <p className="history-empty">Waiting for scripture-like phrases from live transcript.</p>
                       ) : (
-                        <ul className="detected-list paraphrase-list paraphrase-list--scroll">
+                        <ul className="detected-list paraphrase-list">
                           {liveTranscriptSuggestions.map((suggestion) => (
                             <li key={suggestion.id} className="detected-list__item">
                               <div className="detected-list__row">
@@ -1944,7 +1944,7 @@ export default function App() {
                     {liveParaphraseSuggestions.length === 0 ? (
                       <p className="history-empty">No live transcript suggestions yet.</p>
                     ) : (
-                      <ul className="detected-list paraphrase-list paraphrase-list--scroll">
+                      <ul className="detected-list paraphrase-list">
                         {liveParaphraseSuggestions.map((match) => (
                           <li key={match.id} className="detected-list__item">
                             <div className="detected-list__row">
@@ -1969,7 +1969,7 @@ export default function App() {
                       {paraphraseMatches.length === 0 ? (
                         <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
                       ) : (
-                        <ul className="detected-list paraphrase-list paraphrase-list--scroll">
+                        <ul className="detected-list paraphrase-list">
                           {paraphraseMatches.map((match) => (
                             <li key={`${match.reference}-${match.text.slice(0, 16)}`} className="detected-list__item">
                               <div className="detected-list__row">
