@@ -1130,34 +1130,41 @@ export default function App() {
 
   const handlePickBackgroundImage = useCallback(async () => {
     try {
+      console.info("[presentation-background] background picker clicked");
       const selected = await open({
         multiple: false,
         filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }]
       });
+      console.info("[presentation-background] dialog selection returned", { selected });
 
-      if (!selected || Array.isArray(selected)) {
+      if (!selected) {
         return;
       }
 
-      if (!isSupportedBackgroundImagePath(selected)) {
+      const selectedPath = Array.isArray(selected) ? selected[0] : selected;
+      if (!selectedPath) {
+        return;
+      }
+
+      if (!isSupportedBackgroundImagePath(selectedPath)) {
         setStatus("Background selection failed");
         setSessionNotice("Selected file is not a supported image. Please choose PNG, JPG, JPEG, or WEBP.");
         return;
       }
 
-      const resolvedSource = await getBackgroundImageSource(selected);
+      const resolvedSource = await getBackgroundImageSource(selectedPath);
       if (!resolvedSource) {
         setStatus("Background selection failed");
         setSessionNotice("Unable to load the selected background image. Try another file.");
         return;
       }
 
-      setCustomBackgroundPath(selected);
+      setCustomBackgroundPath(selectedPath);
       setCustomBackgroundSource(resolvedSource);
       setCustomBackgroundError(null);
       setBackgroundMode("custom-image");
       setStatus("Custom presentation background selected");
-      setSessionNotice(`Custom background selected: ${selected}`);
+      setSessionNotice(`Custom background selected: ${selectedPath}`);
     } catch (error) {
       const details = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
       setSessionNotice(`Background selection failed: ${details}`);
@@ -1855,14 +1862,15 @@ export default function App() {
               <h2>Paraphrase Matches</h2>
               <p>Optional lane for paraphrase-led lookup.</p>
             </header>
-            <div className="panel-card__body search-controls">
+            <div className="panel-card__body search-controls paraphrase-panel-body">
               {showParaphraseLane ? (
                 <>
                   {paraphraseNotice ? <p className="mic-status-line">{paraphraseNotice}</p> : null}
-                  <div>
+                  <section className="paraphrase-section">
                     <label className="field-label" htmlFor="paraphrase-panel-input">Search by Paraphrase</label>
-                    <div className="search-row">
+                    <div className="search-row paraphrase-search-row">
                       <input
+                        className="paraphrase-search-row__input"
                         id="paraphrase-panel-input"
                         value={paraphraseInput}
                         onChange={(e) => setParaphraseInput(e.target.value)}
@@ -1872,7 +1880,7 @@ export default function App() {
                         placeholder="e.g., God loved the world"
                       />
                       <button
-                        className="present-button present-button--secondary"
+                        className="present-button present-button--secondary paraphrase-search-row__button"
                         type="button"
                         onClick={() => void handleParaphraseSearch()}
                         disabled={isParaphraseLoading}
@@ -1880,7 +1888,7 @@ export default function App() {
                         {isParaphraseLoading ? "Searching..." : "Search"}
                       </button>
                       <button
-                        className="present-button present-button--ghost"
+                        className="present-button present-button--ghost paraphrase-search-row__button"
                         type="button"
                         onClick={handleClearParaphraseMatches}
                         disabled={isParaphraseLoading || isLiveParaphraseLoading}
@@ -1889,44 +1897,45 @@ export default function App() {
                         Clear Paraphrase Matches
                       </button>
                     </div>
-                  </div>
+                  </section>
 
-                  <div className="live-suggestions-block">
-                    <h3 className="field-label">Transcript-fed Suggestions</h3>
-                    {liveTranscriptSuggestions.length === 0 ? (
-                      <p className="history-empty">Waiting for scripture-like phrases from live transcript.</p>
-                    ) : (
-                      <ul className="detected-list paraphrase-list paraphrase-list--scroll">
-                        {liveTranscriptSuggestions.map((suggestion) => (
-                          <li key={suggestion.id} className="detected-list__item">
-                            <div className="detected-list__row">
-                              <span className="history-list__reference">{suggestion.topReference}</span>
-                              <span className="confidence-pill">{suggestion.confidenceLabel}</span>
-                            </div>
-                            <p className="history-list__meta">{suggestion.anchorLabel} • {new Date(suggestion.createdAtMs).toLocaleTimeString()}</p>
-                            <p className="detected-list__preview">“{suggestion.transcript}”</p>
-                            <p className="history-list__meta">Top match: {suggestion.matches[0]?.reference ?? "Unknown"}</p>
-                            {isManualOperatorMode ? (
-                              <button
-                                className="present-button present-button--secondary detected-list__action"
-                                type="button"
-                                onClick={() => {
-                                  const reference = suggestion.matches[0]?.reference;
-                                  if (!reference) return;
-                                  void handleSearch(reference, "typed");
-                                }}
-                                disabled={!suggestion.matches[0]?.reference}
-                              >
-                                Show Suggested Match
-                              </button>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+                  <div className="paraphrase-panel-sections">
+                    <section className="live-suggestions-block paraphrase-section">
+                      <h3 className="field-label">Transcript-fed Suggestions</h3>
+                      {liveTranscriptSuggestions.length === 0 ? (
+                        <p className="history-empty">Waiting for scripture-like phrases from live transcript.</p>
+                      ) : (
+                        <ul className="detected-list paraphrase-list paraphrase-list--scroll">
+                          {liveTranscriptSuggestions.map((suggestion) => (
+                            <li key={suggestion.id} className="detected-list__item">
+                              <div className="detected-list__row">
+                                <span className="history-list__reference">{suggestion.topReference}</span>
+                                <span className="confidence-pill">{suggestion.confidenceLabel}</span>
+                              </div>
+                              <p className="history-list__meta">{suggestion.anchorLabel} • {new Date(suggestion.createdAtMs).toLocaleTimeString()}</p>
+                              <p className="detected-list__preview">“{suggestion.transcript}”</p>
+                              <p className="history-list__meta">Top match: {suggestion.matches[0]?.reference ?? "Unknown"}</p>
+                              {isManualOperatorMode ? (
+                                <button
+                                  className="present-button present-button--secondary detected-list__action"
+                                  type="button"
+                                  onClick={() => {
+                                    const reference = suggestion.matches[0]?.reference;
+                                    if (!reference) return;
+                                    void handleSearch(reference, "typed");
+                                  }}
+                                  disabled={!suggestion.matches[0]?.reference}
+                                >
+                                  Show Suggested Match
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
 
-                  <div className="live-suggestions-section">
+                    <section className="live-suggestions-section paraphrase-section">
                     <div className="live-suggestions-section__header">
                       <h3>Transcript Anchor Suggestions</h3>
                       <p>Suggested from transcript concept anchors.</p>
@@ -1953,29 +1962,33 @@ export default function App() {
                         ))}
                       </ul>
                     )}
-                  </div>
+                    </section>
 
-                  {paraphraseMatches.length === 0 ? (
-                    <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
-                  ) : (
-                    <ul className="detected-list paraphrase-list paraphrase-list--scroll">
-                      {paraphraseMatches.map((match) => (
-                        <li key={`${match.reference}-${match.text.slice(0, 16)}`} className="detected-list__item">
-                          <div className="detected-list__row">
-                            <span className="history-list__reference">{match.reference}</span>
-                            <span className="confidence-pill">{match.confidenceLabel}</span>
-                          </div>
-                          <p className="history-list__meta">Matched terms: {match.matchedTerms}</p>
-                          <p className="detected-list__preview">{match.text}</p>
-                          {isManualOperatorMode ? (
-                            <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
-                              Show on Display
-                            </button>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                    <section className="paraphrase-section">
+                      <h3 className="field-label">Typed Paraphrase Results</h3>
+                      {paraphraseMatches.length === 0 ? (
+                        <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
+                      ) : (
+                        <ul className="detected-list paraphrase-list paraphrase-list--scroll">
+                          {paraphraseMatches.map((match) => (
+                            <li key={`${match.reference}-${match.text.slice(0, 16)}`} className="detected-list__item">
+                              <div className="detected-list__row">
+                                <span className="history-list__reference">{match.reference}</span>
+                                <span className="confidence-pill">{match.confidenceLabel}</span>
+                              </div>
+                              <p className="history-list__meta">Matched terms: {match.matchedTerms}</p>
+                              <p className="detected-list__preview">{match.text}</p>
+                              {isManualOperatorMode ? (
+                                <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
+                                  Show on Display
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  </div>
                 </>
               ) : (
                 <p className="history-empty">Paraphrase lane is turned off from the top bar.</p>
