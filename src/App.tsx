@@ -9,6 +9,7 @@ import MicrophoneMeter from "./components/MicrophoneMeter";
 import PresentationSurface from "./components/PresentationSurface";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
 import { CANONICAL_BOOK_DICTIONARY } from "./features/parser/spokenBookMatcher";
+import { buildTranscriptAnchorPlan } from "./features/paraphrase/liveTranscriptSuggestions";
 import { useSpeechMeter } from "./features/speech/useSpeechMeter";
 import {
   PROJECTOR_WINDOW_LABEL,
@@ -75,6 +76,15 @@ type DetectionQueueItem = {
   autoPresented: boolean;
 };
 
+type LiveParaphraseSuggestion = ParaphraseMatch & {
+  id: string;
+  sourceAnchor: string;
+  sourceReason: "iconic_phrase" | "parable_phrase" | "keyword_phrase";
+  sourceTranscript: string;
+  transcriptLabel: "likely" | "possible";
+  score: number;
+};
+
 type ListeningPersistentMode = "off" | "manual_active" | "auto_active";
 type ListeningWorkflowState =
   | "idle"
@@ -100,6 +110,8 @@ const AUTO_FINAL_CONFIDENCE = 0.82;
 const AUTO_BOOK_ANCHOR_CONFIDENCE = 0.42;
 const AUTO_BOOK_CANDIDATE_HOLD_MS = 2200;
 const MAX_FAVORITE_REFERENCES = 24;
+const LIVE_PARAPHRASE_DEBOUNCE_MS = 900;
+const LIVE_PARAPHRASE_DUPLICATE_COOLDOWN_MS = 9_000;
 
 const SHORTCUT_REFERENCE: ShortcutDefinition[] = [
   { keys: "Alt+F", action: "Focus search input" },
@@ -183,6 +195,8 @@ export default function App() {
   const [showParaphraseLane, setShowParaphraseLane] = useState(true);
   const [paraphraseInput, setParaphraseInput] = useState("");
   const [paraphraseMatches, setParaphraseMatches] = useState<ParaphraseMatch[]>([]);
+  const [liveParaphraseSuggestions, setLiveParaphraseSuggestions] = useState<LiveParaphraseSuggestion[]>([]);
+  const [isLiveParaphraseLoading, setIsLiveParaphraseLoading] = useState(false);
   const [paraphraseNotice, setParaphraseNotice] = useState<string | null>(null);
   const [isParaphraseLoading, setIsParaphraseLoading] = useState(false);
   const [detectionQueue, setDetectionQueue] = useState<DetectionQueueItem[]>([]);
@@ -191,6 +205,7 @@ export default function App() {
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
   const lastAutoSearchRef = useRef<{ normalizedReference: string; timestampMs: number } | null>(null);
   const startupRestoreStartedRef = useRef(false);
+  const lastLiveParaphraseCaptureRef = useRef<{ key: string; timestampMs: number } | null>(null);
   const autoListeningSessionRef = useRef(false);
   const interimCaptureRef = useRef<{ transcript: string; normalizedReference: string; timestampMs: number } | null>(null);
   const autoBookAnchorRef = useRef<{ canonicalBook: string; timestampMs: number } | null>(null);
@@ -603,6 +618,76 @@ export default function App() {
       setIsParaphraseLoading(false);
     }
   }, [paraphraseInput, showParaphraseLane]);
+
+  const runLiveParaphraseSuggestions = useCallback(
+    async (spokenTranscript: string) => {
+      if (!showParaphraseLane) {
+        return;
+      }
+      const anchorPlan = buildTranscriptAnchorPlan(spokenTranscript);
+      if (!anchorPlan.shouldSearch || anchorPlan.anchors.length === 0) {
+        setIsLiveParaphraseLoading(false);
+        return;
+      }
+
+      const dedupeKey = `${anchorPlan.anchors.map((anchor) => anchor.phrase).join("|")}::${spokenTranscript.trim().toLowerCase()}`;
+      const now = Date.now();
+      const lastCapture = lastLiveParaphraseCaptureRef.current;
+      if (lastCapture && lastCapture.key === dedupeKey && now - lastCapture.timestampMs < LIVE_PARAPHRASE_DUPLICATE_COOLDOWN_MS) {
+        return;
+      }
+      lastLiveParaphraseCaptureRef.current = { key: dedupeKey, timestampMs: now };
+
+      try {
+        setIsLiveParaphraseLoading(true);
+        const anchorResults = await Promise.all(
+          anchorPlan.anchors.map(async (anchor) => ({
+            anchor,
+            matches: await searchKjvParaphrase(anchor.phrase, 6)
+          }))
+        );
+
+        const merged = new Map<string, LiveParaphraseSuggestion>();
+        for (const resultSet of anchorResults) {
+          for (const match of resultSet.matches) {
+            const weightedScore = Math.min((match.confidence * 0.76) + (resultSet.anchor.weight * 0.24), 1);
+            if (weightedScore < 0.52) {
+              continue;
+            }
+            const id = `${match.reference}-${match.text.slice(0, 20)}`;
+            const transcriptLabel: "likely" | "possible" = weightedScore >= 0.72 ? "likely" : "possible";
+            const existing = merged.get(id);
+            if (!existing || existing.score < weightedScore) {
+              merged.set(id, {
+                ...match,
+                id,
+                sourceAnchor: resultSet.anchor.phrase,
+                sourceReason: resultSet.anchor.reason,
+                sourceTranscript: spokenTranscript.trim(),
+                transcriptLabel,
+                score: weightedScore
+              });
+            }
+          }
+        }
+
+        const ranked = [...merged.values()].sort((a, b) => b.score - a.score).slice(0, 8);
+        if (ranked.length > 0) {
+          setLiveParaphraseSuggestions(ranked);
+          const likelyCount = ranked.filter((item) => item.transcriptLabel === "likely").length;
+          setParaphraseNotice(
+            `Suggested from transcript: ${ranked.length} match${ranked.length === 1 ? "" : "es"} (${likelyCount} likely, ${ranked.length - likelyCount} possible).`
+          );
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Live paraphrase suggestion failed.";
+        setParaphraseNotice(`Live suggestion warning: ${message}`);
+      } finally {
+        setIsLiveParaphraseLoading(false);
+      }
+    },
+    [showParaphraseLane]
+  );
 
   const handleSearch = useCallback(
     async (overrideReference?: string, sourceType: SessionSourceType = "typed") => {
@@ -1046,6 +1131,23 @@ export default function App() {
 
     return () => window.clearTimeout(captureId);
   }, [listening, listeningMode, transcript, tryAutoCaptureCandidate]);
+
+  useEffect(() => {
+    if (!showParaphraseLane || !isListeningModeActive || !transcript.trim()) {
+      return;
+    }
+
+    const anchorPlan = buildTranscriptAnchorPlan(transcript);
+    if (!anchorPlan.shouldSearch) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void runLiveParaphraseSuggestions(transcript);
+    }, LIVE_PARAPHRASE_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isListeningModeActive, runLiveParaphraseSuggestions, showParaphraseLane, transcript]);
 
   useEffect(() => {
     if (listeningMode !== "auto" || !autoListeningSessionRef.current || listening) {
@@ -1599,6 +1701,34 @@ export default function App() {
               {showParaphraseLane ? (
                 <>
                   {paraphraseNotice ? <p className="mic-status-line">{paraphraseNotice}</p> : null}
+                  <div className="live-suggestions-section">
+                    <div className="live-suggestions-section__header">
+                      <h3>Live Suggestions</h3>
+                      <p>Suggested from transcript concept anchors.</p>
+                    </div>
+                    {isLiveParaphraseLoading ? <p className="history-empty">Scanning transcript for likely scripture paraphrases...</p> : null}
+                    {liveParaphraseSuggestions.length === 0 ? (
+                      <p className="history-empty">No live transcript suggestions yet.</p>
+                    ) : (
+                      <ul className="detected-list paraphrase-list">
+                        {liveParaphraseSuggestions.map((match) => (
+                          <li key={match.id} className="detected-list__item">
+                            <div className="detected-list__row">
+                              <span className="history-list__reference">{match.reference}</span>
+                              <span className="confidence-pill">{match.transcriptLabel === "likely" ? "Likely" : "Possible"}</span>
+                            </div>
+                            <p className="history-list__meta">Suggested from transcript anchor: "{match.sourceAnchor}"</p>
+                            <p className="detected-list__preview">{match.text}</p>
+                            {isManualOperatorMode ? (
+                              <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
+                                Show on Display
+                              </button>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                   {paraphraseMatches.length === 0 ? (
                     <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
                   ) : (
