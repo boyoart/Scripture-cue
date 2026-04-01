@@ -369,6 +369,11 @@ input[type="range"] { padding: 0; }
 .paraphrase-list {
   max-height: none;
 }
+.live-suggestions-block {
+  display: grid;
+  gap: .45rem;
+  margin-bottom: .7rem;
+}
 .detected-list__item { border: 1px solid color-mix(in srgb, var(--border-soft), transparent 24%); border-radius: 10px; padding: .65rem .7rem; background: color-mix(in srgb, var(--input-bg), transparent 18%); display: grid; gap: .38rem; }
 .detected-list__item--pending { border-color: color-mix(in srgb, #f4c84c, var(--border-soft) 35%); }
 .detected-list__row { display: flex; justify-content: space-between; gap: .5rem; align-items: center; }
