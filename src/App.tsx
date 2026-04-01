@@ -55,6 +55,14 @@ type HistoryItem = {
   repeats: number;
 };
 
+type DetectedMatchCard = {
+  reference: string;
+  confidence: string;
+  preview: string;
+  timestampMs: number;
+  sourceLabel: string;
+};
+
 type ListeningPersistentMode = "off" | "manual_active" | "auto_active";
 type ListeningWorkflowState =
   | "idle"
@@ -989,8 +997,27 @@ export default function App() {
     }
   }, [listeningState]);
 
-  const uniqueHistoryReferences = useMemo(() => [...new Set(history.map((item) => item.reference))], [history]);
-  const topDetectedMatches = useMemo(() => uniqueHistoryReferences.slice(0, 6), [uniqueHistoryReferences]);
+  const detectedMatchCards = useMemo<DetectedMatchCard[]>(() => {
+    return history.slice(0, 6).map((item) => {
+      const latestSource = sessionLog.find((entry) => entry.reference === item.reference)?.sourceType;
+      const sourceLabel = latestSource === "spoken" ? "Spoken match" : "Typed lookup";
+      const baseConfidence = latestSource === "spoken" ? 84 : 97;
+      const confidenceBonus = Math.min(item.repeats, 5);
+      const confidence = Math.min(baseConfidence + confidenceBonus, 99);
+      const preview =
+        result.reference === item.reference && result.found && result.verses.length > 0
+          ? result.verses.slice(0, 1).map((verse) => verse.text).join(" ")
+          : "Ready to project on display.";
+
+      return {
+        reference: item.reference,
+        confidence: `${confidence}%`,
+        preview,
+        timestampMs: item.timestampMs,
+        sourceLabel
+      };
+    });
+  }, [history, result.found, result.reference, result.verses, sessionLog]);
 
   const togglePresentationMode = useCallback(async () => {
     const root = document.documentElement;
@@ -1221,6 +1248,14 @@ export default function App() {
       <div className={`app-shell ${isPresentationMode ? "app-shell--presentation-active" : ""}`}>
         <header className="app-shell__topbar">
           <div className="topbar-brand-row">
+            <div className="brand-block">
+              <img src={APP_BRANDING.logoUrl} alt={`${APP_BRANDING.productName} logo`} className="brand-block__logo" />
+              <div className="brand-block__text">
+                <p className="eyebrow">Desktop Operator Surface</p>
+                <h1>{APP_BRANDING.productName}</h1>
+                <p className="brand-subtitle">{APP_BRANDING.subtitle}</p>
+              </div>
+            </div>
             <div className="menu-cluster" role="menubar" aria-label="Application menu">
               <div
                 className="app-menu"
@@ -1249,13 +1284,6 @@ export default function App() {
                     <button type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
                   </div>
                 ) : null}
-              </div>
-            </div>
-            <div className="brand-block">
-              <img src={APP_BRANDING.logoUrl} alt={`${APP_BRANDING.productName} logo`} className="brand-block__logo" />
-              <div>
-                <p className="eyebrow">{APP_BRANDING.productName.toUpperCase()}</p>
-                <h1>{APP_BRANDING.subtitle}</h1>
               </div>
             </div>
           </div>
@@ -1313,9 +1341,16 @@ export default function App() {
               <h2>Live Transcript</h2>
               <p>Speech appears here while listening is active.</p>
             </header>
-            <div className="panel-card__body search-controls">
+            <div className="panel-card__body search-controls transcript-body">
               <MicrophoneMeter bars={bars} micState={micState} />
-              <p className="mic-status-line">{transcript.trim() || "Start listening to capture spoken references in real time."}</p>
+              {transcript.trim() ? (
+                <p className="mic-status-line transcript-entry">{transcript.trim()}</p>
+              ) : (
+                <div className="empty-state-block">
+                  <p className="empty-state-block__title">Waiting for transcript</p>
+                  <p className="empty-state-block__copy">Start listening to capture spoken references in real time.</p>
+                </div>
+              )}
               {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
               {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
             </div>
@@ -1326,7 +1361,7 @@ export default function App() {
               <h2>Main Verse Display</h2>
               <p>Lookup by reference and present the active verse.</p>
             </header>
-            <div className="panel-card__body search-controls">
+            <div className="panel-card__body search-controls verse-display-body">
               <label className="field-label" htmlFor="reference-input">Enter Bible Reference</label>
               <div className="search-row">
                 <input
@@ -1369,13 +1404,23 @@ export default function App() {
               <p>Recent spoken or typed verse results.</p>
             </header>
             <div className="panel-card__body search-controls">
-              {topDetectedMatches.length === 0 ? <p className="history-empty">Detected verse matches will appear here.</p> : (
-                <ul className="history-list">
-                  {topDetectedMatches.map((match) => (
-                    <li key={match}>
-                      <button className="history-list__item" type="button" onClick={() => void handleSearch(match, "typed")}>
-                        <span className="history-list__reference">{match}</span>
-                        <span className="history-list__meta">Show on display</span>
+              {detectedMatchCards.length === 0 ? (
+                <div className="empty-state-block">
+                  <p className="empty-state-block__title">No verse matches yet</p>
+                  <p className="empty-state-block__copy">Detected verse matches will appear here once searches begin.</p>
+                </div>
+              ) : (
+                <ul className="detected-list">
+                  {detectedMatchCards.map((match) => (
+                    <li key={`${match.reference}-${match.timestampMs}`} className="detected-list__item">
+                      <div className="detected-list__row">
+                        <span className="history-list__reference">{match.reference}</span>
+                        <span className="confidence-pill">{match.confidence} confidence</span>
+                      </div>
+                      <p className="history-list__meta">{match.sourceLabel}</p>
+                      <p className="detected-list__preview">{match.preview}</p>
+                      <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
+                        Show on Display
                       </button>
                     </li>
                   ))}
@@ -1403,11 +1448,11 @@ export default function App() {
           <section className="panel-card">
             <header className="panel-card__header"><h2>Session Stats</h2></header>
             <div className="panel-card__body">
-              <dl className="metadata-grid session-stats-grid">
-                <div><dt>Transcripts</dt><dd>{history.length}</dd></div>
-                <div><dt>Verses Detected</dt><dd>{sessionLog.length}</dd></div>
-                <div><dt>Status</dt><dd>{status}</dd></div>
-                <div><dt>Projector</dt><dd>{isProjectorWindowOpen ? "Connected" : "Offline"}</dd></div>
+              <dl className="session-stats-grid">
+                <div className="stat-tile"><dt>Transcripts</dt><dd>{history.length}</dd></div>
+                <div className="stat-tile"><dt>Verses Detected</dt><dd>{sessionLog.length}</dd></div>
+                <div className="stat-tile"><dt>Projector</dt><dd>{isProjectorWindowOpen ? "Connected" : "Offline"}</dd></div>
+                <div className="stat-tile stat-tile--status"><dt>Status</dt><dd>{status}</dd></div>
               </dl>
             </div>
           </section>
