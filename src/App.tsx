@@ -4,7 +4,7 @@ import { WebviewWindow } from "@tauri-apps/api/window";
 import { open, save } from "@tauri-apps/api/dialog";
 import { writeTextFile } from "@tauri-apps/api/fs";
 import { writeText } from "@tauri-apps/api/clipboard";
-import { searchKjv, type SearchResult } from "./api";
+import { searchKjv, searchKjvParaphrase, type ParaphraseMatch, type SearchResult } from "./api";
 import MicrophoneMeter from "./components/MicrophoneMeter";
 import PresentationSurface from "./components/PresentationSurface";
 import { normalizeTranscriptToReference, type NormalizedResult } from "./features/parser";
@@ -56,11 +56,22 @@ type HistoryItem = {
 };
 
 type DetectedMatchCard = {
+  id: string;
   reference: string;
   confidence: string;
   preview: string;
   timestampMs: number;
   sourceLabel: string;
+  isPending: boolean;
+};
+
+type DetectionQueueItem = {
+  id: string;
+  reference: string;
+  transcript: string;
+  confidence: number;
+  timestampMs: number;
+  autoPresented: boolean;
 };
 
 type ListeningPersistentMode = "off" | "manual_active" | "auto_active";
@@ -150,6 +161,7 @@ export default function App() {
   const [isProjectorWindowOpen, setIsProjectorWindowOpen] = useState(initialSettings.wasProjectorWindowOpen);
   const [isRestoringStartupState, setIsRestoringStartupState] = useState(true);
   const [listeningMode, setListeningMode] = useState<ListeningMode>(initialSettings.listeningMode);
+  const [detectionDisplayMode, setDetectionDisplayMode] = useState<"auto" | "manual">(initialSettings.detectionDisplayMode);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(initialSettings.displayMode);
   const [softwareTheme, setSoftwareTheme] = useState<SoftwareTheme>(initialSettings.softwareTheme);
   const [backgroundMode, setBackgroundMode] = useState<PresentationBackgroundMode>(initialSettings.backgroundMode);
@@ -168,6 +180,11 @@ export default function App() {
   const [activeDialog, setActiveDialog] = useState<OperatorDialog>(null);
   const [openTopMenu, setOpenTopMenu] = useState<TopMenuKey>(null);
   const [showParaphraseLane, setShowParaphraseLane] = useState(true);
+  const [paraphraseInput, setParaphraseInput] = useState("");
+  const [paraphraseMatches, setParaphraseMatches] = useState<ParaphraseMatch[]>([]);
+  const [paraphraseNotice, setParaphraseNotice] = useState<string | null>(null);
+  const [isParaphraseLoading, setIsParaphraseLoading] = useState(false);
+  const [detectionQueue, setDetectionQueue] = useState<DetectionQueueItem[]>([]);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
@@ -386,6 +403,7 @@ export default function App() {
         wasProjectorWindowOpen: isProjectorWindowOpen,
         helpPanelExpanded,
         listeningMode,
+        detectionDisplayMode,
         displayMode,
         softwareTheme,
         backgroundMode,
@@ -412,6 +430,7 @@ export default function App() {
     isProjectorWindowOpen,
     helpPanelExpanded,
     listeningMode,
+    detectionDisplayMode,
     displayMode,
     softwareTheme,
     backgroundMode,
@@ -525,6 +544,63 @@ export default function App() {
       return nextMode;
     });
   }, []);
+
+  const queueDetectedReference = useCallback(
+    (reference: string, transcript: string, confidence: number, autoPresented: boolean) => {
+      const normalizedReference = reference.trim();
+      if (!normalizedReference) {
+        return;
+      }
+
+      const now = Date.now();
+      const id = `${normalizedReference}-${now}`;
+      setDetectionQueue((previous) => {
+        const recentDuplicate = previous.find(
+          (entry) => entry.reference === normalizedReference && now - entry.timestampMs < AUTO_SEARCH_DUPLICATE_COOLDOWN_MS
+        );
+        if (recentDuplicate) {
+          return previous;
+        }
+
+        const nextEntry: DetectionQueueItem = {
+          id,
+          reference: normalizedReference,
+          transcript: transcript.trim(),
+          confidence,
+          timestampMs: now,
+          autoPresented
+        };
+        return [nextEntry, ...previous].slice(0, 50);
+      });
+    },
+    []
+  );
+
+  const handleParaphraseSearch = useCallback(async () => {
+    const trimmedPhrase = paraphraseInput.trim();
+    if (!trimmedPhrase || !showParaphraseLane) {
+      return;
+    }
+
+    try {
+      setIsParaphraseLoading(true);
+      setParaphraseNotice(null);
+      const matches = await searchKjvParaphrase(trimmedPhrase, 12);
+      setParaphraseMatches(matches);
+      if (matches.length === 0) {
+        setParaphraseNotice("No close phrase matches found. Try fewer keywords or simpler wording.");
+      } else {
+        setParaphraseNotice(`Showing ${matches.length} likely KJV matches for "${trimmedPhrase}".`);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error, null, 2);
+      setParaphraseMatches([]);
+      setParaphraseNotice(`Paraphrase search failed: ${message}`);
+    } finally {
+      setIsParaphraseLoading(false);
+    }
+  }, [paraphraseInput, showParaphraseLane]);
 
   const handleSearch = useCallback(
     async (overrideReference?: string, sourceType: SessionSourceType = "typed") => {
@@ -653,10 +729,17 @@ export default function App() {
       setActiveReference(nextReference);
       setReferenceInput(nextReference);
       triggerDetectionPulse();
-      setSpeechNotice(`Auto mode presenting: "${spokenTranscript}" → ${nextReference}`);
-      await handleSearch(nextReference, "spoken");
+      queueDetectedReference(nextReference, spokenTranscript, normalized.confidence, detectionDisplayMode === "auto");
+
+      if (detectionDisplayMode === "auto") {
+        setSpeechNotice(`Auto mode presenting: "${spokenTranscript}" → ${nextReference}`);
+        await handleSearch(nextReference, "spoken");
+      } else {
+        setSpeechNotice(`Manual display mode: detected "${nextReference}" and queued for operator confirmation.`);
+        setListeningState("waiting_for_speech");
+      }
     },
-    [handleSearch, listeningMode, triggerDetectionPulse]
+    [detectionDisplayMode, handleSearch, listeningMode, queueDetectedReference, triggerDetectionPulse]
   );
 
   const tryAutoCaptureCandidate = useCallback(
@@ -710,21 +793,28 @@ export default function App() {
       setActiveReference(nextReference);
       setReferenceInput(nextReference);
       triggerDetectionPulse();
+      queueDetectedReference(nextReference, spokenTranscript, normalized.confidence, detectionDisplayMode === "auto");
       setSpeechNotice(
-        source === "interim"
-          ? `Auto mode caught quickly: "${nextReference}"`
-          : `Auto mode presenting: "${spokenTranscript}" → ${nextReference}`
+        detectionDisplayMode === "auto"
+          ? source === "interim"
+            ? `Auto mode caught quickly: "${nextReference}"`
+            : `Auto mode presenting: "${spokenTranscript}" → ${nextReference}`
+          : `Manual display mode queued: "${nextReference}".`
       );
-      setListeningState("processing");
-      await handleSearch(nextReference, "spoken");
+      if (detectionDisplayMode === "auto") {
+        setListeningState("processing");
+        await handleSearch(nextReference, "spoken");
+      } else {
+        setListeningState("waiting_for_speech");
+      }
 
-      if (source === "interim" && listening) {
+      if (detectionDisplayMode === "auto" && source === "interim" && listening) {
         stopListening("idle");
       }
 
       return true;
     },
-    [handleSearch, listening, listeningMode, stopListening, triggerDetectionPulse]
+    [detectionDisplayMode, handleSearch, listening, listeningMode, queueDetectedReference, stopListening, triggerDetectionPulse]
   );
 
   const exportSessionLog = useCallback(
@@ -998,7 +1088,7 @@ export default function App() {
   }, [listeningState]);
 
   const detectedMatchCards = useMemo<DetectedMatchCard[]>(() => {
-    return history.slice(0, 6).map((item) => {
+    const searchedCards = history.slice(0, 12).map((item) => {
       const latestSource = sessionLog.find((entry) => entry.reference === item.reference)?.sourceType;
       const sourceLabel = latestSource === "spoken" ? "Spoken match" : "Typed lookup";
       const baseConfidence = latestSource === "spoken" ? 84 : 97;
@@ -1010,14 +1100,30 @@ export default function App() {
           : "Ready to project on display.";
 
       return {
+        id: `history-${item.reference}-${item.timestampMs}`,
         reference: item.reference,
         confidence: `${confidence}%`,
         preview,
         timestampMs: item.timestampMs,
-        sourceLabel
+        sourceLabel,
+        isPending: false
       };
     });
-  }, [history, result.found, result.reference, result.verses, sessionLog]);
+
+    const pendingCards = detectionQueue.map((entry) => ({
+      id: entry.id,
+      reference: entry.reference,
+      confidence: `${Math.round(entry.confidence * 100)}%`,
+      preview: entry.transcript ? `Heard: "${entry.transcript}"` : "Detected spoken reference awaiting review.",
+      timestampMs: entry.timestampMs,
+      sourceLabel: entry.autoPresented ? "Spoken (auto displayed)" : "Spoken detection (manual review)",
+      isPending: !entry.autoPresented
+    }));
+
+    return [...pendingCards, ...searchedCards]
+      .sort((a, b) => b.timestampMs - a.timestampMs)
+      .slice(0, 24);
+  }, [detectionQueue, history, result.found, result.reference, result.verses, sessionLog]);
 
   const togglePresentationMode = useCallback(async () => {
     const root = document.documentElement;
@@ -1306,6 +1412,17 @@ export default function App() {
                 <option value="auto">Auto</option>
               </select>
             </label>
+            <label className="compact-control" htmlFor="topbar-detection-display-select">
+              Detected Display
+              <select
+                id="topbar-detection-display-select"
+                value={detectionDisplayMode}
+                onChange={(e) => setDetectionDisplayMode(e.target.value as "auto" | "manual")}
+              >
+                <option value="auto">Auto Display</option>
+                <option value="manual">Manual Display</option>
+              </select>
+            </label>
           </div>
 
           <div className="topbar-status">
@@ -1412,15 +1529,22 @@ export default function App() {
               ) : (
                 <ul className="detected-list">
                   {detectedMatchCards.map((match) => (
-                    <li key={`${match.reference}-${match.timestampMs}`} className="detected-list__item">
+                    <li key={match.id} className={`detected-list__item ${match.isPending ? "detected-list__item--pending" : ""}`}>
                       <div className="detected-list__row">
                         <span className="history-list__reference">{match.reference}</span>
                         <span className="confidence-pill">{match.confidence} confidence</span>
                       </div>
                       <p className="history-list__meta">{match.sourceLabel}</p>
                       <p className="detected-list__preview">{match.preview}</p>
-                      <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
-                        Show on Display
+                      <button
+                        className="present-button present-button--secondary detected-list__action"
+                        type="button"
+                        onClick={() => {
+                          setDetectionQueue((previous) => previous.filter((entry) => entry.id !== match.id));
+                          void handleSearch(match.reference, "spoken");
+                        }}
+                      >
+                        {match.isPending ? "Review & Display" : "Show on Display"}
                       </button>
                     </li>
                   ))}
@@ -1436,7 +1560,28 @@ export default function App() {
             </header>
             <div className="panel-card__body search-controls">
               {showParaphraseLane ? (
-                <p className="history-empty">Speak a Bible verse in your own words and future paraphrase matches will appear here.</p>
+                <>
+                  {paraphraseNotice ? <p className="mic-status-line">{paraphraseNotice}</p> : null}
+                  {paraphraseMatches.length === 0 ? (
+                    <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
+                  ) : (
+                    <ul className="detected-list">
+                      {paraphraseMatches.map((match) => (
+                        <li key={`${match.reference}-${match.text.slice(0, 16)}`} className="detected-list__item">
+                          <div className="detected-list__row">
+                            <span className="history-list__reference">{match.reference}</span>
+                            <span className="confidence-pill">{match.confidenceLabel}</span>
+                          </div>
+                          <p className="history-list__meta">Matched terms: {match.matchedTerms}</p>
+                          <p className="detected-list__preview">{match.text}</p>
+                          <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
+                            Show on Display
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               ) : (
                 <p className="history-empty">Paraphrase lane is turned off from the top bar.</p>
               )}
@@ -1481,9 +1626,23 @@ export default function App() {
                 <div>
                   <label className="field-label" htmlFor="manual-paraphrase-input">Search by Paraphrase</label>
                   <div className="search-row">
-                    <input id="manual-paraphrase-input" placeholder="e.g., God loved the world" disabled={!showParaphraseLane} />
-                    <button className="present-button present-button--secondary" type="button" disabled>
-                      Search
+                    <input
+                      id="manual-paraphrase-input"
+                      value={paraphraseInput}
+                      onChange={(e) => setParaphraseInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleParaphraseSearch();
+                      }}
+                      placeholder="e.g., God loved the world"
+                      disabled={!showParaphraseLane}
+                    />
+                    <button
+                      className="present-button present-button--secondary"
+                      type="button"
+                      onClick={() => void handleParaphraseSearch()}
+                      disabled={!showParaphraseLane || isParaphraseLoading}
+                    >
+                      {isParaphraseLoading ? "Searching..." : "Search"}
                     </button>
                   </div>
                 </div>

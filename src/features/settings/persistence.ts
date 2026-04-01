@@ -22,6 +22,7 @@ export type PersistedAppSettings = {
   lastReference: string | null;
   helpPanelExpanded: boolean;
   listeningMode: ListeningMode;
+  detectionDisplayMode: "auto" | "manual";
   displayMode: DisplayMode;
   softwareTheme: SoftwareTheme;
   backgroundMode: PresentationBackgroundMode;
@@ -48,6 +49,7 @@ const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
   lastReference: null,
   helpPanelExpanded: true,
   listeningMode: "manual",
+  detectionDisplayMode: "auto",
   displayMode: "fullscreen",
   softwareTheme: "midnight",
   backgroundMode: "solid-dark",
@@ -86,6 +88,10 @@ function isListeningMode(value: unknown): value is ListeningMode {
 
 function isDisplayMode(value: unknown): value is DisplayMode {
   return value === "fullscreen" || value === "lower-third";
+}
+
+function isDetectionDisplayMode(value: unknown): value is PersistedAppSettings["detectionDisplayMode"] {
+  return value === "auto" || value === "manual";
 }
 
 function isBackgroundMode(value: unknown): value is PresentationBackgroundMode {
@@ -166,6 +172,9 @@ export function readAppSettings(): PersistedAppSettings {
       lastReference: asNullableString(parsed.lastReference),
       helpPanelExpanded: asBoolean(parsed.helpPanelExpanded, DEFAULT_APP_SETTINGS.helpPanelExpanded),
       listeningMode: isListeningMode(parsed.listeningMode) ? parsed.listeningMode : DEFAULT_APP_SETTINGS.listeningMode,
+      detectionDisplayMode: isDetectionDisplayMode(parsed.detectionDisplayMode)
+        ? parsed.detectionDisplayMode
+        : DEFAULT_APP_SETTINGS.detectionDisplayMode,
       displayMode: isDisplayMode(parsed.displayMode) ? parsed.displayMode : DEFAULT_APP_SETTINGS.displayMode,
       softwareTheme: isSoftwareTheme(parsed.softwareTheme) ? parsed.softwareTheme : DEFAULT_APP_SETTINGS.softwareTheme,
       backgroundMode: isBackgroundMode(parsed.backgroundMode) ? parsed.backgroundMode : DEFAULT_APP_SETTINGS.backgroundMode,
@@ -205,6 +214,7 @@ export function settingsFromSnapshot(input: {
   wasProjectorWindowOpen: boolean;
   helpPanelExpanded: boolean;
   listeningMode: ListeningMode;
+  detectionDisplayMode: "auto" | "manual";
   displayMode: DisplayMode;
   softwareTheme: SoftwareTheme;
   backgroundMode: PresentationBackgroundMode;
@@ -231,6 +241,7 @@ export function settingsFromSnapshot(input: {
     lastReference: input.result.found ? input.result.reference : null,
     helpPanelExpanded: input.helpPanelExpanded,
     listeningMode: input.listeningMode,
+    detectionDisplayMode: input.detectionDisplayMode,
     displayMode: input.displayMode,
     softwareTheme: input.softwareTheme,
     backgroundMode: input.backgroundMode,
