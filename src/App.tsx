@@ -111,7 +111,7 @@ type DetectionSignalSource = "final" | "interim";
 type HistoryPanelTab = "recent-history" | "session-log";
 type OperatorDialog = "settings" | "history" | "help" | "debug" | null;
 type ShortcutDefinition = { keys: string; action: string };
-type TopMenuKey = "file" | "view" | "presentation" | "tools" | "help" | null;
+type TopMenuKey = "command" | null;
 
 const HISTORY_DUPLICATE_COOLDOWN_MS = 10_000;
 const AUTO_SEARCH_DUPLICATE_COOLDOWN_MS = 8_000;
@@ -229,6 +229,15 @@ export default function App() {
   const { bars, micState, transcript, errorMessage, lastErrorCode, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
   const isListeningModeActive = persistentListeningMode !== "off";
   const isManualOperatorMode = listeningMode === "manual";
+  const openDialogFromMenu = useCallback((dialog: Exclude<OperatorDialog, null>) => {
+    setOpenTopMenu(null);
+    setActiveDialog(dialog);
+  }, []);
+
+  const runMenuAction = useCallback((action: () => void | Promise<void>) => {
+    setOpenTopMenu(null);
+    void action();
+  }, []);
 
   const verseText = useMemo(() => {
     if (!result.found || result.verses.length === 0) {
@@ -1563,31 +1572,28 @@ export default function App() {
               </div>
             </div>
             <div className="menu-cluster" role="menubar" aria-label="Application menu">
-              <div
-                className="app-menu"
-                onMouseEnter={() => {
-                  if (openTopMenu) setOpenTopMenu("file");
-                }}
-              >
+              <div className="app-menu">
                 <button
                   type="button"
-                  className={`app-menu__trigger ${openTopMenu === "file" ? "app-menu__trigger--open" : ""}`}
-                  onClick={() => setOpenTopMenu((current) => (current === "file" ? null : "file"))}
+                  className={`app-menu__trigger ${openTopMenu === "command" ? "app-menu__trigger--open" : ""}`}
+                  onClick={() => setOpenTopMenu((current) => (current === "command" ? null : "command"))}
                 >
                   Menu
                 </button>
-                {openTopMenu === "file" ? (
-                  <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
-                    <button type="button" onClick={() => void handleOpenProjectorView()}>{isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}</button>
-                    <button type="button" onClick={() => void togglePresentationMode()}>{isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}</button>
-                    <button type="button" onClick={toggleDisplayMode}>{displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}</button>
-                    <button type="button" onClick={() => setActiveDialog("history")}>History / Session Center</button>
-                    <button type="button" onClick={() => setActiveDialog("settings")}>Settings</button>
-                    <button type="button" onClick={() => setActiveDialog("help")}>Help</button>
-                    <button type="button" onClick={() => setActiveDialog("debug")}>Debug / Advanced</button>
-                    <button type="button" onClick={() => void exportSessionLog("txt")}>Export Session TXT</button>
-                    <button type="button" onClick={() => void exportSessionLog("csv")}>Export Session CSV</button>
-                    <button type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
+                {openTopMenu === "command" ? (
+                  <div className="app-menu__panel" role="menu" aria-label="Command menu">
+                    <p className="app-menu__group-label">Panels</p>
+                    <button type="button" role="menuitem" onClick={() => openDialogFromMenu("settings")}>Settings</button>
+                    <button type="button" role="menuitem" onClick={() => openDialogFromMenu("history")}>History / Session Center</button>
+                    <button type="button" role="menuitem" onClick={() => openDialogFromMenu("help")}>Help</button>
+                    <button type="button" role="menuitem" onClick={() => openDialogFromMenu("debug")}>Debug / Advanced</button>
+                    <p className="app-menu__group-label">Actions</p>
+                    <button type="button" role="menuitem" onClick={() => runMenuAction(handleOpenProjectorView)}>{isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}</button>
+                    <button type="button" role="menuitem" onClick={() => runMenuAction(togglePresentationMode)}>{isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}</button>
+                    <button type="button" role="menuitem" onClick={() => runMenuAction(() => toggleDisplayMode())}>{displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}</button>
+                    <button type="button" role="menuitem" onClick={() => runMenuAction(async () => exportSessionLog("txt"))}>Export Session TXT</button>
+                    <button type="button" role="menuitem" onClick={() => runMenuAction(async () => exportSessionLog("csv"))}>Export Session CSV</button>
+                    <button type="button" role="menuitem" onClick={() => runMenuAction(handleCopyCurrentReference)}>Copy Current Reference</button>
                   </div>
                 ) : null}
               </div>
@@ -1767,6 +1773,28 @@ export default function App() {
               {showParaphraseLane ? (
                 <>
                   {paraphraseNotice ? <p className="mic-status-line">{paraphraseNotice}</p> : null}
+                  <div>
+                    <label className="field-label" htmlFor="paraphrase-panel-input">Search by Paraphrase</label>
+                    <div className="search-row">
+                      <input
+                        id="paraphrase-panel-input"
+                        value={paraphraseInput}
+                        onChange={(e) => setParaphraseInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") void handleParaphraseSearch();
+                        }}
+                        placeholder="e.g., God loved the world"
+                      />
+                      <button
+                        className="present-button present-button--secondary"
+                        type="button"
+                        onClick={() => void handleParaphraseSearch()}
+                        disabled={isParaphraseLoading}
+                      >
+                        {isParaphraseLoading ? "Searching..." : "Search"}
+                      </button>
+                    </div>
+                  </div>
 
                   <div className="live-suggestions-block">
                     <h3 className="field-label">Live Suggestions (from transcript)</h3>
@@ -1877,48 +1905,7 @@ export default function App() {
           <section className="panel-card">
             <header className="panel-card__header"><h2>Manual Controls</h2></header>
             <div className="panel-card__body search-controls">
-              <div className="manual-search-grid">
-                <div>
-                  <label className="field-label" htmlFor="manual-reference-input">Enter Bible Reference</label>
-                  <div className="search-row">
-                    <input
-                      id="manual-reference-input"
-                      value={referenceInput}
-                      onChange={(e) => setReferenceInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void handleSearch();
-                      }}
-                      placeholder="e.g., John 3:16"
-                    />
-                    <button className="run-search-button" type="button" onClick={() => void handleSearch()} disabled={isLoading}>
-                      Display
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="manual-paraphrase-input">Search by Paraphrase</label>
-                  <div className="search-row">
-                    <input
-                      id="manual-paraphrase-input"
-                      value={paraphraseInput}
-                      onChange={(e) => setParaphraseInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") void handleParaphraseSearch();
-                      }}
-                      placeholder="e.g., God loved the world"
-                      disabled={!showParaphraseLane}
-                    />
-                    <button
-                      className="present-button present-button--secondary"
-                      type="button"
-                      onClick={() => void handleParaphraseSearch()}
-                      disabled={!showParaphraseLane || isParaphraseLoading}
-                    >
-                      {isParaphraseLoading ? "Searching..." : "Search"}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <p className="history-empty">Manual controls keep display actions in one compact place while search stays in the main verse and paraphrase panels.</p>
               {isManualOperatorMode ? (
                 <div className="service-actions service-actions--compact manual-controls-grid">
                   <button className="present-button present-button--secondary" type="button" onClick={() => void toggleProjectorView()}>
