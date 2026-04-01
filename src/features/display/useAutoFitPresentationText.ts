@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 const MIN_FULLSCREEN_FONT_PX = 24;
 const MIN_LOWER_THIRD_FONT_PX = 20;
@@ -24,7 +24,8 @@ export type AutoFitTextOptions = {
 };
 
 export type AutoFitTextResult = {
-  verseStyle: CSSProperties;
+  fittedFontSizePx: number;
+  fittedLineHeight: number;
   didHitMinimum: boolean;
   shouldTopBias: boolean;
 };
@@ -155,10 +156,8 @@ export function useAutoFitPresentationText({
   }, [contentRef, measureAndFit, viewportRef]);
 
   return {
-    verseStyle: {
-      fontSize: `${fit.fontSizePx}px`,
-      lineHeight: fit.lineHeight
-    },
+    fittedFontSizePx: fit.fontSizePx,
+    fittedLineHeight: fit.lineHeight,
     didHitMinimum: fit.didHitMinimum,
     shouldTopBias: fit.shouldTopBias
   };

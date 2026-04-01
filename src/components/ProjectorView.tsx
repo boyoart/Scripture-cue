@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { SearchResult } from "../api";
-import { getPresentationFontCssFamily } from "../features/display/presentationStyling";
+import {
+  getComputedProjectionTypography,
+  getProjectionVerseStyle,
+  type ProjectionTypography
+} from "../features/display/projectionTypography";
 import { useAutoFitPresentationText } from "../features/display/useAutoFitPresentationText";
 import PresentationSurface from "./PresentationSurface";
 import {
@@ -120,15 +124,30 @@ export default function ProjectorView() {
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const verseRef = useRef<HTMLPreElement | null>(null);
-  const { verseStyle, shouldTopBias } = useAutoFitPresentationText({
+  const projectionTypography = useMemo<ProjectionTypography>(() => ({
+    fontFamily: state.projectionFontFamily,
+    baseFontSizePx: state.projectionFontSizePx,
+    lineHeight: state.projectionLineHeight
+  }), [state.projectionFontFamily, state.projectionFontSizePx, state.projectionLineHeight]);
+
+  const {
+    fittedFontSizePx,
+    fittedLineHeight,
+    shouldTopBias
+  } = useAutoFitPresentationText({
     viewportRef,
     contentRef,
     verseRef,
-    preferredFontSizePx: state.projectionFontSizePx,
-    preferredLineHeight: state.projectionLineHeight,
+    preferredFontSizePx: projectionTypography.baseFontSizePx,
+    preferredLineHeight: projectionTypography.lineHeight,
     displayMode: state.displayMode,
     contentKey: `${state.result.reference}|${verseText}|${state.showReference}|${state.referencePlacement}`
   });
+
+
+  const projectorTypography = useMemo(() => {
+    return getComputedProjectionTypography(projectionTypography, fittedFontSizePx, fittedLineHeight);
+  }, [projectionTypography, fittedFontSizePx, fittedLineHeight]);
 
   useEffect(() => {
     console.info("[presentation-background] projector received state", {
@@ -168,10 +187,7 @@ export default function ProjectorView() {
           <pre
             ref={verseRef}
             className={`projector-screen__verse ${state.result.found ? "" : "projector-screen__verse--empty"}`}
-            style={{
-              fontFamily: getPresentationFontCssFamily(state.projectionFontFamily),
-              ...verseStyle
-            }}
+            style={getProjectionVerseStyle(projectorTypography)}
           >
             {verseText}
           </pre>
