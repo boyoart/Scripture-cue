@@ -20,6 +20,7 @@ import {
   type LowerThirdOutputMode,
   type ListeningMode,
   type PresentationBackgroundMode,
+  type PresentationGradientDirection,
   type ProjectorPayload,
   type ReferencePlacement
 } from "./features/display/projectorSync";
@@ -191,6 +192,11 @@ export default function App() {
   const [backgroundMode, setBackgroundMode] = useState<PresentationBackgroundMode>(initialSettings.backgroundMode);
   const [customBackgroundPath, setCustomBackgroundPath] = useState<string | null>(initialSettings.customBackgroundPath);
   const [customBackgroundSource, setCustomBackgroundSource] = useState<string | null>(null);
+  const [customBackgroundError, setCustomBackgroundError] = useState<string | null>(null);
+  const [solidBackgroundColor, setSolidBackgroundColor] = useState(initialSettings.solidBackgroundColor);
+  const [gradientStartColor, setGradientStartColor] = useState(initialSettings.gradientStartColor);
+  const [gradientEndColor, setGradientEndColor] = useState(initialSettings.gradientEndColor);
+  const [gradientDirection, setGradientDirection] = useState<PresentationGradientDirection>(initialSettings.gradientDirection);
   const [backgroundDimStrength, setBackgroundDimStrength] = useState(initialSettings.backgroundDimStrength);
   const [blurBackgroundImage, setBlurBackgroundImage] = useState(initialSettings.blurBackgroundImage);
   const [previewFontFamily, setPreviewFontFamily] = useState(initialSettings.previewFontFamily);
@@ -248,14 +254,43 @@ export default function App() {
   }, [result]);
   const previewVerseText = result.found ? verseText : "";
 
-  const hasCustomPresentationBackground = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
-  const previewDimOpacity = hasCustomPresentationBackground ? Math.min(backgroundDimStrength, 0.8) : 0.35;
-  const fullscreenDimOpacity = backgroundMode === "custom-image" ? Math.min(backgroundDimStrength, 0.8) : 0.35;
+  const presentationBackgroundState = useMemo(() => ({
+    backgroundMode,
+    customBackgroundPath,
+    customBackgroundSource,
+    customBackgroundError,
+    solidBackgroundColor,
+    gradientStartColor,
+    gradientEndColor,
+    gradientDirection,
+    backgroundDimStrength,
+    blurBackgroundImage
+  }), [
+    backgroundMode,
+    customBackgroundPath,
+    customBackgroundSource,
+    customBackgroundError,
+    solidBackgroundColor,
+    gradientStartColor,
+    gradientEndColor,
+    gradientDirection,
+    backgroundDimStrength,
+    blurBackgroundImage
+  ]);
+
+  const hasCustomPresentationBackground = presentationBackgroundState.backgroundMode === "custom-image" &&
+    Boolean(presentationBackgroundState.customBackgroundSource);
+  const previewDimOpacity = hasCustomPresentationBackground ? Math.min(presentationBackgroundState.backgroundDimStrength, 0.8) : 0.35;
+  const fullscreenDimOpacity = presentationBackgroundState.backgroundMode === "custom-image"
+    ? Math.min(presentationBackgroundState.backgroundDimStrength, 0.8)
+    : 0.35;
   const isTransparentLowerThird = displayMode === "lower-third" && lowerThirdOutputMode === "transparent";
   const isChromaLowerThird = displayMode === "lower-third" && lowerThirdOutputMode === "chroma-key";
   const isVersePreviewUsingCustomImage = hasCustomPresentationBackground;
-  const isProjectorUsingCustomImage = backgroundMode === "custom-image" && Boolean(customBackgroundSource);
-  const isFullscreenUsingCustomImage = isPresentationMode && backgroundMode === "custom-image" && Boolean(customBackgroundSource);
+  const isProjectorUsingCustomImage = presentationBackgroundState.backgroundMode === "custom-image" && Boolean(presentationBackgroundState.customBackgroundSource);
+  const isFullscreenUsingCustomImage = isPresentationMode &&
+    presentationBackgroundState.backgroundMode === "custom-image" &&
+    Boolean(presentationBackgroundState.customBackgroundSource);
 
   const triggerDetectionPulse = useCallback(() => {
     setDetectionPulseKey((value) => value + 1);
@@ -269,11 +304,16 @@ export default function App() {
       referencePlacement,
       useSafeMargins,
       displayMode,
-      backgroundMode,
-      customBackgroundPath,
-      customBackgroundSource,
-      backgroundDimStrength,
-      blurBackgroundImage,
+      backgroundMode: presentationBackgroundState.backgroundMode,
+      customBackgroundPath: presentationBackgroundState.customBackgroundPath,
+      customBackgroundSource: presentationBackgroundState.customBackgroundSource,
+      customBackgroundError: presentationBackgroundState.customBackgroundError,
+      solidBackgroundColor: presentationBackgroundState.solidBackgroundColor,
+      gradientStartColor: presentationBackgroundState.gradientStartColor,
+      gradientEndColor: presentationBackgroundState.gradientEndColor,
+      gradientDirection: presentationBackgroundState.gradientDirection,
+      backgroundDimStrength: presentationBackgroundState.backgroundDimStrength,
+      blurBackgroundImage: presentationBackgroundState.blurBackgroundImage,
       previewFontFamily,
       previewFontSizePx,
       projectionFontFamily,
@@ -289,11 +329,7 @@ export default function App() {
       referencePlacement,
       useSafeMargins,
       displayMode,
-      backgroundMode,
-      customBackgroundPath,
-      customBackgroundSource,
-      backgroundDimStrength,
-      blurBackgroundImage,
+      presentationBackgroundState,
       previewFontFamily,
       previewFontSizePx,
       projectionFontFamily,
@@ -340,12 +376,22 @@ export default function App() {
     const loadBackgroundSource = async () => {
       if (!customBackgroundPath) {
         setCustomBackgroundSource(null);
+        setCustomBackgroundError(null);
         return;
       }
 
       const nextSource = await getBackgroundImageSource(customBackgroundPath);
       if (isCurrent) {
-        setCustomBackgroundSource(nextSource);
+        if (nextSource) {
+          setCustomBackgroundSource(nextSource);
+          setCustomBackgroundError(null);
+        } else {
+          setCustomBackgroundError("Unable to load the selected background image. Falling back to solid dark.");
+          setCustomBackgroundSource(null);
+          setBackgroundMode("solid-dark");
+          setStatus("Background load failed");
+          setSessionNotice("Background image failed to load. Falling back to solid dark.");
+        }
       }
     };
 
@@ -365,6 +411,13 @@ export default function App() {
       renderSource: customBackgroundSource
     });
   }, [backgroundMode, customBackgroundPath, customBackgroundSource]);
+
+  useEffect(() => {
+    if (!customBackgroundError) {
+      return;
+    }
+    setSessionNotice(customBackgroundError);
+  }, [customBackgroundError]);
 
   useEffect(() => {
     if (!openTopMenu) {
@@ -447,6 +500,10 @@ export default function App() {
         softwareTheme,
         backgroundMode,
         customBackgroundPath,
+        solidBackgroundColor,
+        gradientStartColor,
+        gradientEndColor,
+        gradientDirection,
         backgroundDimStrength,
         blurBackgroundImage,
         previewFontFamily,
@@ -474,6 +531,10 @@ export default function App() {
     softwareTheme,
     backgroundMode,
     customBackgroundPath,
+    solidBackgroundColor,
+    gradientStartColor,
+    gradientEndColor,
+    gradientDirection,
     backgroundDimStrength,
     blurBackgroundImage,
     previewFontFamily,
@@ -644,6 +705,10 @@ export default function App() {
   const queueLiveTranscriptSuggestion = useCallback(
     async (spokenTranscript: string) => {
       if (!showParaphraseLane) {
+        return;
+      }
+      const transcriptAnchorPlan = buildTranscriptAnchorPlan(spokenTranscript);
+      if (!transcriptAnchorPlan.shouldSearch) {
         return;
       }
 
@@ -1075,6 +1140,7 @@ export default function App() {
 
       setCustomBackgroundPath(selected);
       setCustomBackgroundSource(resolvedSource);
+      setCustomBackgroundError(null);
       setBackgroundMode("custom-image");
       setStatus("Custom presentation background selected");
       setSessionNotice(`Custom background selected: ${selected}`);
@@ -1087,6 +1153,8 @@ export default function App() {
 
   const handleResetBackgroundImage = useCallback(() => {
     setCustomBackgroundPath(null);
+    setCustomBackgroundSource(null);
+    setCustomBackgroundError(null);
     setBackgroundMode("solid-dark");
     setStatus("Presentation background reset to solid dark");
   }, []);
@@ -1708,9 +1776,13 @@ export default function App() {
                 as="div"
                 className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
                 contentClassName="verse-preview-shell__content"
-                backgroundMode={backgroundMode}
-                backgroundSource={customBackgroundSource}
-                blurBackgroundImage={blurBackgroundImage}
+                backgroundMode={presentationBackgroundState.backgroundMode}
+                backgroundSource={presentationBackgroundState.customBackgroundSource}
+                solidBackgroundColor={presentationBackgroundState.solidBackgroundColor}
+                gradientStartColor={presentationBackgroundState.gradientStartColor}
+                gradientEndColor={presentationBackgroundState.gradientEndColor}
+                gradientDirection={presentationBackgroundState.gradientDirection}
+                blurBackgroundImage={presentationBackgroundState.blurBackgroundImage}
                 dimOpacity={previewDimOpacity}
                 containerProps={{ "data-background-received": String(hasCustomPresentationBackground) }}
               >
@@ -1797,11 +1869,11 @@ export default function App() {
                   </div>
 
                   <div className="live-suggestions-block">
-                    <h3 className="field-label">Live Suggestions (from transcript)</h3>
+                    <h3 className="field-label">Transcript-fed Suggestions</h3>
                     {liveTranscriptSuggestions.length === 0 ? (
                       <p className="history-empty">Waiting for scripture-like phrases from live transcript.</p>
                     ) : (
-                      <ul className="detected-list paraphrase-list">
+                      <ul className="detected-list paraphrase-list paraphrase-list--scroll">
                         {liveTranscriptSuggestions.map((suggestion) => (
                           <li key={suggestion.id} className="detected-list__item">
                             <div className="detected-list__row">
@@ -1833,14 +1905,14 @@ export default function App() {
 
                   <div className="live-suggestions-section">
                     <div className="live-suggestions-section__header">
-                      <h3>Live Suggestions</h3>
+                      <h3>Transcript Anchor Suggestions</h3>
                       <p>Suggested from transcript concept anchors.</p>
                     </div>
                     {isLiveParaphraseLoading ? <p className="history-empty">Scanning transcript for likely scripture paraphrases...</p> : null}
                     {liveParaphraseSuggestions.length === 0 ? (
                       <p className="history-empty">No live transcript suggestions yet.</p>
                     ) : (
-                      <ul className="detected-list paraphrase-list">
+                      <ul className="detected-list paraphrase-list paraphrase-list--scroll">
                         {liveParaphraseSuggestions.map((match) => (
                           <li key={match.id} className="detected-list__item">
                             <div className="detected-list__row">
@@ -1863,7 +1935,7 @@ export default function App() {
                   {paraphraseMatches.length === 0 ? (
                     <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
                   ) : (
-                    <ul className="detected-list paraphrase-list">
+                    <ul className="detected-list paraphrase-list paraphrase-list--scroll">
                       {paraphraseMatches.map((match) => (
                         <li key={`${match.reference}-${match.text.slice(0, 16)}`} className="detected-list__item">
                           <div className="detected-list__row">
@@ -1997,13 +2069,55 @@ export default function App() {
                       <div className="translation-row">
                         <label className="field-label" htmlFor="background-mode-select">Background style</label>
                         <select id="background-mode-select" value={backgroundMode} onChange={(e) => setBackgroundMode(e.target.value as PresentationBackgroundMode)}>
-                          <option value="solid-dark">Solid dark</option>
+                          <option value="solid-dark">Solid Dark</option>
+                          <option value="solid-light">Solid Light</option>
+                          <option value="solid-custom">Solid Custom Color</option>
+                          <option value="gradient-two-color">Two-Color Gradient</option>
                           <option value="custom-image">Custom image</option>
                         </select>
                       </div>
+                      {(backgroundMode === "solid-custom" || backgroundMode === "gradient-two-color") ? (
+                        <div className="translation-row">
+                          <label className="field-label" htmlFor="background-primary-color">Primary color</label>
+                          <input
+                            id="background-primary-color"
+                            type="color"
+                            value={backgroundMode === "solid-custom" ? solidBackgroundColor : gradientStartColor}
+                            onChange={(e) => {
+                              const next = e.target.value;
+                              if (backgroundMode === "solid-custom") {
+                                setSolidBackgroundColor(next);
+                              } else {
+                                setGradientStartColor(next);
+                              }
+                            }}
+                          />
+                        </div>
+                      ) : null}
+                      {backgroundMode === "gradient-two-color" ? (
+                        <>
+                          <div className="translation-row">
+                            <label className="field-label" htmlFor="background-secondary-color">Secondary color</label>
+                            <input
+                              id="background-secondary-color"
+                              type="color"
+                              value={gradientEndColor}
+                              onChange={(e) => setGradientEndColor(e.target.value)}
+                            />
+                          </div>
+                          <div className="translation-row">
+                            <label className="field-label" htmlFor="gradient-direction-select">Gradient direction</label>
+                            <select id="gradient-direction-select" value={gradientDirection} onChange={(e) => setGradientDirection(e.target.value as PresentationGradientDirection)}>
+                              <option value="top-bottom">Top to Bottom</option>
+                              <option value="left-right">Left to Right</option>
+                              <option value="diagonal">Diagonal</option>
+                            </select>
+                          </div>
+                        </>
+                      ) : null}
                       <div className="service-actions">
                         <button className="present-button present-button--secondary" type="button" onClick={() => void handlePickBackgroundImage()}>Choose Background Image</button>
-                        <button className="present-button present-button--secondary" type="button" onClick={handleResetBackgroundImage}>Use Solid Dark</button>
+                        <button className="present-button present-button--secondary" type="button" onClick={handleResetBackgroundImage}>Reset to Solid Dark</button>
                       </div>
                       <p className="session-notice">Current image: {customBackgroundPath ?? "None selected"}</p>
                       <label className="inline-check">
@@ -2336,6 +2450,10 @@ export default function App() {
           contentClassName={`presentation-mode__content presentation-mode__content--${presentationState.displayMode} ${presentationState.useSafeMargins ? "presentation-mode__content--safe" : ""}`}
           backgroundMode={presentationState.backgroundMode}
           backgroundSource={presentationState.customBackgroundSource}
+          solidBackgroundColor={presentationState.solidBackgroundColor}
+          gradientStartColor={presentationState.gradientStartColor}
+          gradientEndColor={presentationState.gradientEndColor}
+          gradientDirection={presentationState.gradientDirection}
           blurBackgroundImage={presentationState.blurBackgroundImage}
           dimOpacity={isTransparentLowerThird ? 0 : fullscreenDimOpacity}
           containerProps={{

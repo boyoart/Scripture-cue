@@ -8,7 +8,8 @@ const PROJECTOR_STATE_STORAGE_KEY = "scripture-cue:projector-state";
 export type ReferencePlacement = "top-left" | "top-center" | "bottom-left";
 export type ListeningMode = "manual" | "auto";
 export type DisplayMode = "fullscreen" | "lower-third";
-export type PresentationBackgroundMode = "solid-dark" | "custom-image";
+export type PresentationBackgroundMode = "solid-dark" | "solid-light" | "solid-custom" | "gradient-two-color" | "custom-image";
+export type PresentationGradientDirection = "top-bottom" | "left-right" | "diagonal";
 export type LowerThirdOutputMode = "transparent" | "chroma-key";
 export type PresentationFontFamily =
   | "Inter"
@@ -30,6 +31,11 @@ export type ProjectorPayload = {
   backgroundMode: PresentationBackgroundMode;
   customBackgroundPath: string | null;
   customBackgroundSource: string | null;
+  customBackgroundError: string | null;
+  solidBackgroundColor: string;
+  gradientStartColor: string;
+  gradientEndColor: string;
+  gradientDirection: PresentationGradientDirection;
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
   previewFontFamily: PresentationFontFamily;

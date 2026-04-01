@@ -27,6 +27,11 @@ type ProjectorViewState = {
   backgroundMode: ProjectorPayload["backgroundMode"];
   customBackgroundPath: string | null;
   customBackgroundSource: string | null;
+  customBackgroundError: string | null;
+  solidBackgroundColor: string;
+  gradientStartColor: string;
+  gradientEndColor: string;
+  gradientDirection: ProjectorPayload["gradientDirection"];
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
   previewFontFamily: ProjectorPayload["previewFontFamily"];
@@ -57,6 +62,11 @@ const EMPTY_STATE: ProjectorViewState = {
   backgroundMode: "solid-dark",
   customBackgroundPath: null,
   customBackgroundSource: null,
+  customBackgroundError: null,
+  solidBackgroundColor: "#1f2540",
+  gradientStartColor: "#0b1022",
+  gradientEndColor: "#1f3a78",
+  gradientDirection: "top-bottom",
   backgroundDimStrength: 0.5,
   blurBackgroundImage: false,
   previewFontFamily: "Inter",
@@ -167,6 +177,10 @@ export default function ProjectorView() {
       backgroundMode={state.backgroundMode}
       backgroundSource={backgroundImageSrc}
       blurBackgroundImage={state.blurBackgroundImage}
+      solidBackgroundColor={state.solidBackgroundColor}
+      gradientStartColor={state.gradientStartColor}
+      gradientEndColor={state.gradientEndColor}
+      gradientDirection={state.gradientDirection}
       dimOpacity={isTransparentLowerThird ? 0 : dimOpacity}
       containerProps={{
         "aria-live": "polite",

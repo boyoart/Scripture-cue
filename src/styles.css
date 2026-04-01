@@ -390,6 +390,11 @@ input[type="range"] { padding: 0; }
 .paraphrase-list {
   max-height: none;
 }
+.paraphrase-list--scroll {
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: .15rem;
+}
 .live-suggestions-block {
   display: grid;
   gap: .45rem;

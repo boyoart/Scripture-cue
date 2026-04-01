@@ -5,6 +5,7 @@ import type {
   ListeningMode,
   PresentationFontFamily,
   PresentationBackgroundMode,
+  PresentationGradientDirection,
   ReferencePlacement
 } from "../display/projectorSync";
 
@@ -27,6 +28,10 @@ export type PersistedAppSettings = {
   softwareTheme: SoftwareTheme;
   backgroundMode: PresentationBackgroundMode;
   customBackgroundPath: string | null;
+  solidBackgroundColor: string;
+  gradientStartColor: string;
+  gradientEndColor: string;
+  gradientDirection: PresentationGradientDirection;
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
   previewFontFamily: PresentationFontFamily;
@@ -54,6 +59,10 @@ const DEFAULT_APP_SETTINGS: PersistedAppSettings = {
   softwareTheme: "midnight",
   backgroundMode: "solid-dark",
   customBackgroundPath: null,
+  solidBackgroundColor: "#1f2540",
+  gradientStartColor: "#0b1022",
+  gradientEndColor: "#1f3a78",
+  gradientDirection: "top-bottom",
   backgroundDimStrength: 0.5,
   blurBackgroundImage: false,
   previewFontFamily: "Inter",
@@ -95,7 +104,11 @@ function isDetectionDisplayMode(value: unknown): value is PersistedAppSettings["
 }
 
 function isBackgroundMode(value: unknown): value is PresentationBackgroundMode {
-  return value === "solid-dark" || value === "custom-image";
+  return value === "solid-dark" || value === "solid-light" || value === "solid-custom" || value === "gradient-two-color" || value === "custom-image";
+}
+
+function isGradientDirection(value: unknown): value is PresentationGradientDirection {
+  return value === "top-bottom" || value === "left-right" || value === "diagonal";
 }
 function isLowerThirdOutputMode(value: unknown): value is LowerThirdOutputMode {
   return value === "transparent" || value === "chroma-key";
@@ -179,6 +192,12 @@ export function readAppSettings(): PersistedAppSettings {
       softwareTheme: isSoftwareTheme(parsed.softwareTheme) ? parsed.softwareTheme : DEFAULT_APP_SETTINGS.softwareTheme,
       backgroundMode: isBackgroundMode(parsed.backgroundMode) ? parsed.backgroundMode : DEFAULT_APP_SETTINGS.backgroundMode,
       customBackgroundPath: asNullableString(parsed.customBackgroundPath),
+      solidBackgroundColor: asString(parsed.solidBackgroundColor, DEFAULT_APP_SETTINGS.solidBackgroundColor),
+      gradientStartColor: asString(parsed.gradientStartColor, DEFAULT_APP_SETTINGS.gradientStartColor),
+      gradientEndColor: asString(parsed.gradientEndColor, DEFAULT_APP_SETTINGS.gradientEndColor),
+      gradientDirection: isGradientDirection(parsed.gradientDirection)
+        ? parsed.gradientDirection
+        : DEFAULT_APP_SETTINGS.gradientDirection,
       backgroundDimStrength: asNumberInRange(parsed.backgroundDimStrength, DEFAULT_APP_SETTINGS.backgroundDimStrength, 0, 0.9),
       blurBackgroundImage: asBoolean(parsed.blurBackgroundImage, DEFAULT_APP_SETTINGS.blurBackgroundImage),
       previewFontFamily: isPresentationFontFamily(parsed.previewFontFamily)
@@ -219,6 +238,10 @@ export function settingsFromSnapshot(input: {
   softwareTheme: SoftwareTheme;
   backgroundMode: PresentationBackgroundMode;
   customBackgroundPath: string | null;
+  solidBackgroundColor: string;
+  gradientStartColor: string;
+  gradientEndColor: string;
+  gradientDirection: PresentationGradientDirection;
   backgroundDimStrength: number;
   blurBackgroundImage: boolean;
   previewFontFamily: PresentationFontFamily;
@@ -246,6 +269,10 @@ export function settingsFromSnapshot(input: {
     softwareTheme: input.softwareTheme,
     backgroundMode: input.backgroundMode,
     customBackgroundPath: input.customBackgroundPath,
+    solidBackgroundColor: input.solidBackgroundColor,
+    gradientStartColor: input.gradientStartColor,
+    gradientEndColor: input.gradientEndColor,
+    gradientDirection: input.gradientDirection,
     backgroundDimStrength: input.backgroundDimStrength,
     blurBackgroundImage: input.blurBackgroundImage,
     previewFontFamily: input.previewFontFamily,
