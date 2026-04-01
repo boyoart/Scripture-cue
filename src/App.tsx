@@ -755,6 +755,16 @@ export default function App() {
     [showParaphraseLane]
   );
 
+
+  const handleClearParaphraseMatches = useCallback(() => {
+    setParaphraseMatches([]);
+    setLiveTranscriptSuggestions([]);
+    setLiveParaphraseSuggestions([]);
+    setParaphraseNotice(null);
+    lastLiveParaphraseCaptureRef.current = null;
+    lastLiveSuggestionRef.current = null;
+    setStatus("Paraphrase matches cleared");
+  }, []);
   const runLiveParaphraseSuggestions = useCallback(
     async (spokenTranscript: string) => {
       const anchorPlan = buildTranscriptAnchorPlan(spokenTranscript);
@@ -1868,6 +1878,15 @@ export default function App() {
                         disabled={isParaphraseLoading}
                       >
                         {isParaphraseLoading ? "Searching..." : "Search"}
+                      </button>
+                      <button
+                        className="present-button present-button--ghost"
+                        type="button"
+                        onClick={handleClearParaphraseMatches}
+                        disabled={isParaphraseLoading || isLiveParaphraseLoading}
+                        title="Clear paraphrase-only results"
+                      >
+                        Clear Paraphrase Matches
                       </button>
                     </div>
                   </div>
