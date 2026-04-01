@@ -159,7 +159,7 @@ export default function App() {
   const [favoriteReferences, setFavoriteReferences] = useState<string[]>(initialSettings.favoriteReferences);
   const [activeDialog, setActiveDialog] = useState<OperatorDialog>(null);
   const [openTopMenu, setOpenTopMenu] = useState<TopMenuKey>(null);
-  const [supportPanelExpanded, setSupportPanelExpanded] = useState(false);
+  const [showParaphraseLane, setShowParaphraseLane] = useState(true);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
   const projectorWindowRef = useRef<WebviewWindow | null>(null);
   const lastHistoryEntryRef = useRef<{ reference: string; timestampMs: number } | null>(null);
@@ -1252,97 +1252,20 @@ export default function App() {
                 className={`app-menu__trigger ${openTopMenu === "file" ? "app-menu__trigger--open" : ""}`}
                 onClick={() => setOpenTopMenu((current) => (current === "file" ? null : "file"))}
               >
-                File
+                Menu
               </button>
               {openTopMenu === "file" ? (
                 <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
                   <button type="button" onClick={() => void handleOpenProjectorView()}>{isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}</button>
-                  <button type="button" onClick={() => void exportSessionLog("txt")}>Export Session TXT</button>
-                  <button type="button" onClick={() => void exportSessionLog("csv")}>Export Session CSV</button>
-                </div>
-              ) : null}
-            </div>
-            <div
-              className="app-menu"
-              onMouseEnter={() => {
-                if (openTopMenu) setOpenTopMenu("view");
-              }}
-            >
-              <button
-                type="button"
-                className={`app-menu__trigger ${openTopMenu === "view" ? "app-menu__trigger--open" : ""}`}
-                onClick={() => setOpenTopMenu((current) => (current === "view" ? null : "view"))}
-              >
-                View
-              </button>
-              {openTopMenu === "view" ? (
-                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
-                  <button type="button" onClick={() => setActiveDialog("history")}>History / Session</button>
-                  <button type="button" onClick={() => setActiveDialog("settings")}>Theme, Font & Background</button>
-                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Help</button>
-                </div>
-              ) : null}
-            </div>
-            <div
-              className="app-menu"
-              onMouseEnter={() => {
-                if (openTopMenu) setOpenTopMenu("presentation");
-              }}
-            >
-              <button
-                type="button"
-                className={`app-menu__trigger ${openTopMenu === "presentation" ? "app-menu__trigger--open" : ""}`}
-                onClick={() => setOpenTopMenu((current) => (current === "presentation" ? null : "presentation"))}
-              >
-                Presentation
-              </button>
-              {openTopMenu === "presentation" ? (
-                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
                   <button type="button" onClick={() => void togglePresentationMode()}>{isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}</button>
                   <button type="button" onClick={toggleDisplayMode}>{displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}</button>
-                  <button type="button" onClick={handleRepresentCurrentVerse}>Re-present Current Verse</button>
-                  <button type="button" onClick={handleClearCurrentVerse}>Clear Current Verse</button>
-                </div>
-              ) : null}
-            </div>
-            <div
-              className="app-menu"
-              onMouseEnter={() => {
-                if (openTopMenu) setOpenTopMenu("tools");
-              }}
-            >
-              <button
-                type="button"
-                className={`app-menu__trigger ${openTopMenu === "tools" ? "app-menu__trigger--open" : ""}`}
-                onClick={() => setOpenTopMenu((current) => (current === "tools" ? null : "tools"))}
-              >
-                Tools
-              </button>
-              {openTopMenu === "tools" ? (
-                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
+                  <button type="button" onClick={() => setActiveDialog("history")}>History / Session Center</button>
                   <button type="button" onClick={() => setActiveDialog("settings")}>Settings</button>
+                  <button type="button" onClick={() => setActiveDialog("help")}>Help</button>
                   <button type="button" onClick={() => setActiveDialog("debug")}>Debug / Advanced</button>
+                  <button type="button" onClick={() => void exportSessionLog("txt")}>Export Session TXT</button>
+                  <button type="button" onClick={() => void exportSessionLog("csv")}>Export Session CSV</button>
                   <button type="button" onClick={() => void handleCopyCurrentReference()}>Copy Current Reference</button>
-                </div>
-              ) : null}
-            </div>
-            <div
-              className="app-menu"
-              onMouseEnter={() => {
-                if (openTopMenu) setOpenTopMenu("help");
-              }}
-            >
-              <button
-                type="button"
-                className={`app-menu__trigger ${openTopMenu === "help" ? "app-menu__trigger--open" : ""}`}
-                onClick={() => setOpenTopMenu((current) => (current === "help" ? null : "help"))}
-              >
-                Help
-              </button>
-              {openTopMenu === "help" ? (
-                <div className="app-menu__panel" onClick={() => setOpenTopMenu(null)}>
-                  <button type="button" onClick={() => setActiveDialog("help")}>Quick Start</button>
-                  <button type="button" onClick={() => setActiveDialog("history")}>Operator Session Center</button>
                 </div>
               ) : null}
             </div>
@@ -1370,6 +1293,10 @@ export default function App() {
                 <option value="auto">Auto</option>
               </select>
             </label>
+            <label className="inline-check topbar-toggle">
+              <input type="checkbox" checked={showParaphraseLane} onChange={(e) => setShowParaphraseLane(e.target.checked)} />
+              Paraphrase Lane
+            </label>
             <div className="service-pill">State: {listeningStateLabel}</div>
             <div className="service-pill">Transcription: {listening ? "Connected" : "Standby"}</div>
             <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
@@ -1394,81 +1321,72 @@ export default function App() {
         </header>
 
         <div className="workspace-grid workspace-grid--dashboard">
-          <section className="panel-card preview-card">
+          <section className="panel-card transcript-card">
             <header className="panel-card__header">
-              <h2>Live Scripture Workspace</h2>
-              <p>Primary scripture monitor for lookup, confidence preview, and display actions.</p>
+              <h2>Live Transcript</h2>
+              <p>Real-time speech feed for live reference detection.</p>
             </header>
-            <div className="panel-card__body">
-              <div className="search-controls">
-                <label className="field-label" htmlFor="reference-input">Reference</label>
-                <div className="search-row">
-                  <input
-                    id="reference-input"
-                    ref={referenceInputRef}
-                    value={referenceInput}
-                    onChange={(e) => setReferenceInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void handleSearch();
-                    }}
-                    placeholder="Genesis 1:1"
-                  />
-                  <button className="run-search-button" onClick={() => void handleSearch()} disabled={isLoading}>
-                    {isLoading ? "Searching..." : "Search"}
-                  </button>
-                </div>
-                <p className="shortcut-hint">Tip: Alt+F focuses this field. Alt+Enter runs search.</p>
-              </div>
-
-              <header className="panel-card__header"><h2>Verse Preview</h2><p>Large-format text for confidence monitor and projection checks.</p></header>
-                <PresentationSurface
-                  as="div"
-                  className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
-                  contentClassName="verse-preview-shell__content"
-                  backgroundMode={backgroundMode}
-                  backgroundSource={customBackgroundSource}
-                  blurBackgroundImage={blurBackgroundImage}
-                  dimOpacity={previewDimOpacity}
-                  containerProps={{ "data-background-received": String(hasCustomPresentationBackground) }}
-                >
-                  <pre
-                    className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}
-                    style={{ fontFamily: getPresentationFontCssFamily(previewFontFamily), fontSize: `${previewFontSizePx}px` }}
-                  >
-                    {previewVerseText}
-                  </pre>
-                </PresentationSurface>
-                {didFullscreenHitAutoFitMinimum && result.found ? (
-                  <p className="autofit-warning-note">
-                    Auto-fit hit the minimum projection size for this passage. Split into multiple slides if readability is low.
-                  </p>
-                ) : null}
-                <div className="service-actions service-actions--main">
-                  <button className="present-button" type="button" onClick={() => void toggleProjectorView()}>
-                    {isProjectorWindowOpen ? "Focus Display" : "Show on Display"}
-                  </button>
-                  <button className="present-button present-button--secondary" type="button" onClick={handleRepresentCurrentVerse}>
-                    Re-present
-                  </button>
-                  <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>
-                    Clear
-                  </button>
-                </div>
-                <div className="service-actions service-actions--compact">
-                  <button className="present-button present-button--secondary" type="button" onClick={() => void handleNavigateHistoryReference("previous")} disabled={historyReferenceCursor <= 0}>
-                    Previous Verse
-                  </button>
-                  <button className="present-button present-button--secondary" type="button" onClick={() => void handleNavigateHistoryReference("next")} disabled={historyReferenceCursor >= Math.max(uniqueHistoryReferences.length - 1, 0)}>
-                    Next Verse
-                  </button>
-                </div>
-              </div>
+            <div className="panel-card__body search-controls">
+              <MicrophoneMeter bars={bars} micState={micState} />
+              <p className="mic-status-line">Current transcript: {transcript.trim() || "Awaiting speech input..."}</p>
+              {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
+              {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
+              <p className="shortcut-hint">Tip: Alt+M starts/stops listening. Alt+A toggles auto listening mode.</p>
+            </div>
           </section>
 
-          <section className="panel-card">
+          <section className="panel-card preview-card">
+            <header className="panel-card__header">
+              <h2>Main Verse Display</h2>
+              <p>Primary boxed scripture card for typed lookup and verse confidence preview.</p>
+            </header>
+            <div className="panel-card__body search-controls">
+              <label className="field-label" htmlFor="reference-input">Reference</label>
+              <div className="search-row">
+                <input
+                  id="reference-input"
+                  ref={referenceInputRef}
+                  value={referenceInput}
+                  onChange={(e) => setReferenceInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleSearch();
+                  }}
+                  placeholder="Genesis 1:1"
+                />
+                <button className="run-search-button" onClick={() => void handleSearch()} disabled={isLoading}>
+                  {isLoading ? "Searching..." : "Search"}
+                </button>
+              </div>
+              <p className="shortcut-hint">Tip: Alt+F focuses this field. Alt+Enter runs search.</p>
+              <PresentationSurface
+                as="div"
+                className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
+                contentClassName="verse-preview-shell__content"
+                backgroundMode={backgroundMode}
+                backgroundSource={customBackgroundSource}
+                blurBackgroundImage={blurBackgroundImage}
+                dimOpacity={previewDimOpacity}
+                containerProps={{ "data-background-received": String(hasCustomPresentationBackground) }}
+              >
+                <pre
+                  className={`verse-preview ${result.found ? "" : "verse-preview--empty"}`}
+                  style={{ fontFamily: getPresentationFontCssFamily(previewFontFamily), fontSize: `${previewFontSizePx}px` }}
+                >
+                  {previewVerseText || "Verse preview appears here once a result is loaded."}
+                </pre>
+              </PresentationSurface>
+              {didFullscreenHitAutoFitMinimum && result.found ? (
+                <p className="autofit-warning-note">
+                  Auto-fit hit the minimum projection size for this passage. Split into multiple slides if readability is low.
+                </p>
+              ) : null}
+            </div>
+          </section>
+
+          <section className="panel-card detected-card">
             <header className="panel-card__header">
               <h2>Detected Verse Matches</h2>
-              <p>Detection review queue with fast recall and confidence details.</p>
+              <p>Fast recall list from recent detected and presented references.</p>
             </header>
             <div className="panel-card__body search-controls">
               {topDetectedMatches.length === 0 ? <p className="history-empty">Detected verse matches will appear here.</p> : (
@@ -1492,22 +1410,20 @@ export default function App() {
             </div>
           </section>
 
-          <section className="panel-card">
+          <section className="panel-card paraphrase-card">
             <header className="panel-card__header">
-              <h2>Live Detection & Support</h2>
-              <p>Speech feed, paraphrase placeholder, and operator activity context.</p>
+              <h2>Paraphrase Matches</h2>
+              <p>Optional paraphrase lane kept available without crowding live controls.</p>
             </header>
             <div className="panel-card__body search-controls">
-              <MicrophoneMeter bars={bars} micState={micState} />
-              <p className="mic-status-line">Current transcript: {transcript.trim() || "Awaiting speech input..."}</p>
-              {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
-              {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
-              <details className="compact-details" open={supportPanelExpanded} onToggle={(event) => setSupportPanelExpanded(event.currentTarget.open)}>
-                <summary>Open support details</summary>
+              {showParaphraseLane ? (
                 <section className="quick-actions-panel">
-                <h3>Paraphrase Matches</h3>
-                <p className="history-empty">Paraphrase support lane remains available for future inference logic.</p>
-              </section>
+                  <h3>Paraphrase Matches</h3>
+                  <p className="history-empty">Paraphrase support lane remains available for future inference logic.</p>
+                </section>
+              ) : (
+                <p className="history-empty">Paraphrase lane is hidden. Toggle it from the top bar.</p>
+              )}
               <section className="quick-actions-panel">
                 <h3>Recent Activity Feed</h3>
                 {recentSessionEntries.length === 0 ? (
@@ -1532,16 +1448,13 @@ export default function App() {
                   <div><dt>Translation</dt><dd>{result.translation}</dd></div>
                   <div><dt>Theme</dt><dd>{result.theme}</dd></div>
                   <div><dt>Status</dt><dd>{result.found ? "Loaded" : "No Result"}</dd></div>
-                  </dl>
-                </section>
-              </details>
+                </dl>
+              </section>
             </div>
           </section>
         </div>
 
-        <details className="compact-details compact-details--secondary">
-          <summary>Secondary operator panels</summary>
-          <div className="workspace-grid workspace-grid--bottom">
+        <div className="workspace-grid workspace-grid--bottom">
           <section className="panel-card">
             <header className="panel-card__header"><h2>Session Stats</h2></header>
             <div className="panel-card__body">
@@ -1557,39 +1470,24 @@ export default function App() {
           <section className="panel-card">
             <header className="panel-card__header"><h2>Manual Controls</h2></header>
             <div className="panel-card__body search-controls">
-              <div className="service-actions service-actions--compact">
+              <div className="service-actions service-actions--compact manual-controls-grid">
+                <button className="present-button present-button--secondary" type="button" onClick={() => void toggleProjectorView()}>
+                  {isProjectorWindowOpen ? "Focus Display" : "Show on Display"}
+                </button>
+                <button className="present-button present-button--secondary" type="button" onClick={() => void togglePresentationMode()}>
+                  {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
+                </button>
+                <button className="present-button present-button--secondary" type="button" onClick={handleRepresentCurrentVerse}>Re-present</button>
+                <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>Clear Verse</button>
+                <button className="present-button present-button--secondary" type="button" onClick={() => void handleNavigateHistoryReference("previous")} disabled={historyReferenceCursor <= 0}>Previous Verse</button>
+                <button className="present-button present-button--secondary" type="button" onClick={() => void handleNavigateHistoryReference("next")} disabled={historyReferenceCursor >= Math.max(uniqueHistoryReferences.length - 1, 0)}>Next Verse</button>
                 <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("history")}>Open Session Center</button>
                 <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>Open Settings</button>
               </div>
-              <p className="history-empty">Secondary controls moved to the top desktop menu for cleaner operation flow.</p>
+              <p className="history-empty">Secondary tools remain in menu/dialog access for a clean live dashboard.</p>
             </div>
           </section>
-
-          <section className="panel-card favorites-panel" aria-label="Quick presets">
-            <div className="favorites-panel__header">
-              <h3>Favorites / Quick Presets</h3>
-              <button className="present-button present-button--secondary" type="button" onClick={handleSaveFavoriteReference}>Save Current</button>
-            </div>
-            {favoriteReferences.length === 0 ? (
-              <p className="history-empty">No favorites saved yet.</p>
-            ) : (
-              <ul className="favorites-list">
-                {favoriteReferences.map((favorite) => (
-                  <li key={favorite} className="favorites-list__item">
-                    <button className="history-list__item" type="button" onClick={() => void handleRecallFavoriteReference(favorite)}>
-                      <span className="history-list__reference">{favorite}</span>
-                      <span className="history-list__meta">Recall preset</span>
-                    </button>
-                    <button className="favorite-remove-button" type="button" onClick={() => handleRemoveFavoriteReference(favorite)}>
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          </div>
-        </details>
+        </div>
       </div>
 
       {activeDialog ? (
@@ -1781,6 +1679,29 @@ export default function App() {
                     <button className={`present-button present-button--secondary ${historyPanelTab === "recent-history" ? "present-button--active" : ""}`} type="button" onClick={() => setHistoryPanelTab("recent-history")}>Recent History</button>
                     <button className={`present-button present-button--secondary ${historyPanelTab === "session-log" ? "present-button--active" : ""}`} type="button" onClick={() => setHistoryPanelTab("session-log")}>Service Session Log</button>
                   </div>
+                  <section className="quick-actions-panel favorites-panel" aria-label="Quick presets">
+                    <div className="favorites-panel__header">
+                      <h3>Favorites / Quick Presets</h3>
+                      <button className="present-button present-button--secondary" type="button" onClick={handleSaveFavoriteReference}>Save Current</button>
+                    </div>
+                    {favoriteReferences.length === 0 ? (
+                      <p className="history-empty">No favorites saved yet.</p>
+                    ) : (
+                      <ul className="favorites-list">
+                        {favoriteReferences.map((favorite) => (
+                          <li key={favorite} className="favorites-list__item">
+                            <button className="history-list__item" type="button" onClick={() => void handleRecallFavoriteReference(favorite)}>
+                              <span className="history-list__reference">{favorite}</span>
+                              <span className="history-list__meta">Recall preset</span>
+                            </button>
+                            <button className="favorite-remove-button" type="button" onClick={() => handleRemoveFavoriteReference(favorite)}>
+                              Remove
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
                   {historyPanelTab === "recent-history" ? (
                     <>
                       <div className="history-pagination">
