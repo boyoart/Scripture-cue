@@ -29,6 +29,16 @@ struct SearchResult {
     message: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ParaphraseMatch {
+    reference: String,
+    text: String,
+    confidence: f64,
+    confidence_label: String,
+    matched_terms: usize,
+}
+
 fn normalize_book_name(book: &str) -> String {
     match book.trim().to_lowercase().as_str() {
         "psalm" | "psalms" => "Psalms".to_string(),
@@ -47,8 +57,12 @@ fn normalize_book_name(book: &str) -> String {
         "first corinthians" | "one corinthians" | "1 corinthians" => "1 Corinthians".to_string(),
         "second corinthians" | "two corinthians" | "2 corinthians" => "2 Corinthians".to_string(),
 
-        "first thessalonians" | "one thessalonians" | "1 thessalonians" => "1 Thessalonians".to_string(),
-        "second thessalonians" | "two thessalonians" | "2 thessalonians" => "2 Thessalonians".to_string(),
+        "first thessalonians" | "one thessalonians" | "1 thessalonians" => {
+            "1 Thessalonians".to_string()
+        }
+        "second thessalonians" | "two thessalonians" | "2 thessalonians" => {
+            "2 Thessalonians".to_string()
+        }
 
         "first timothy" | "one timothy" | "1 timothy" => "1 Timothy".to_string(),
         "second timothy" | "two timothy" | "2 timothy" => "2 Timothy".to_string(),
@@ -142,10 +156,7 @@ fn resolve_db_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
             return Ok(bundled_path);
         }
 
-        let alt_bundled_path = resource_dir
-            .join("resources")
-            .join("bibles")
-            .join("KJV.db");
+        let alt_bundled_path = resource_dir.join("resources").join("bibles").join("KJV.db");
         if alt_bundled_path.exists() {
             println!("using alt bundled db path: {:?}", alt_bundled_path);
             return Ok(alt_bundled_path);
@@ -229,12 +240,149 @@ fn resolve_book_row(conn: &Connection, canonical_book: &str) -> Option<(i64, Str
     None
 }
 
+fn normalize_phrase_for_match(input: &str) -> String {
+    input
+        .to_lowercase()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch.is_ascii_whitespace() {
+                ch
+            } else {
+                ' '
+            }
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[tauri::command]
+fn search_kjv_paraphrase(
+    app: tauri::AppHandle,
+    phrase: String,
+    limit: Option<usize>,
+) -> Result<Vec<ParaphraseMatch>, String> {
+    let normalized_phrase = normalize_phrase_for_match(&phrase);
+    if normalized_phrase.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let max_results = limit.unwrap_or(12).clamp(1, 25);
+    let db_path = resolve_db_path(&app)?;
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
+
+    let mut tokens: Vec<String> = normalized_phrase
+        .split_whitespace()
+        .map(|token| token.trim().to_string())
+        .filter(|token| token.len() >= 2)
+        .collect();
+    tokens.sort();
+    tokens.dedup();
+    if tokens.is_empty() {
+        return Ok(vec![]);
+    }
+    if tokens.len() > 8 {
+        tokens.truncate(8);
+    }
+
+    let mut sql = String::from(
+        "SELECT books.name, verses.chapter, verses.verse, verses.text
+         FROM KJV_verses verses
+         JOIN KJV_books books ON books.id = verses.book_id
+         WHERE ",
+    );
+    for index in 0..tokens.len() {
+        if index > 0 {
+            sql.push_str(" OR ");
+        }
+        sql.push_str(&format!("LOWER(verses.text) LIKE ?{}", index + 1));
+    }
+    sql.push_str(" LIMIT 1400");
+
+    let like_patterns: Vec<String> = tokens.iter().map(|token| format!("%{}%", token)).collect();
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(rusqlite::params_from_iter(like_patterns.iter()), |row| {
+            let book_name: String = row.get(0)?;
+            let chapter: i64 = row.get(1)?;
+            let verse: i64 = row.get(2)?;
+            let text: String = row.get(3)?;
+            Ok((book_name, chapter, verse, text))
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut scored: Vec<(f64, usize, ParaphraseMatch)> = Vec::new();
+    let token_count = tokens.len().max(1) as f64;
+
+    for row in rows {
+        let (book_name, chapter, verse, text) = row.map_err(|e| e.to_string())?;
+        let normalized_text = normalize_phrase_for_match(&text);
+        if normalized_text.is_empty() {
+            continue;
+        }
+
+        let matched_terms = tokens
+            .iter()
+            .filter(|token| normalized_text.contains(token.as_str()))
+            .count();
+        if matched_terms == 0 {
+            continue;
+        }
+
+        let exact_phrase_hit = normalized_text.contains(&normalized_phrase);
+        let mut score = (matched_terms as f64) / token_count;
+        if exact_phrase_hit {
+            score += 0.55;
+        }
+        if normalized_phrase.len() > 16
+            && normalized_phrase.split_whitespace().count() >= 4
+            && exact_phrase_hit
+        {
+            score += 0.2;
+        }
+        score = score.min(1.0);
+
+        let confidence_label = if score >= 0.88 {
+            "Strong".to_string()
+        } else if score >= 0.62 {
+            "Likely".to_string()
+        } else {
+            "Possible".to_string()
+        };
+
+        scored.push((
+            score,
+            matched_terms,
+            ParaphraseMatch {
+                reference: format!("{} {}:{}", book_name, chapter, verse),
+                text,
+                confidence: score,
+                confidence_label,
+                matched_terms,
+            },
+        ));
+    }
+
+    scored.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| b.1.cmp(&a.1))
+    });
+
+    Ok(scored
+        .into_iter()
+        .take(max_results)
+        .map(|(_, _, item)| item)
+        .collect())
+}
+
 #[tauri::command]
 fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<SearchResult, String> {
     println!("incoming reference: {}", reference);
 
-    let parsed =
-        parse_reference(&reference).ok_or_else(|| format!("Invalid reference format: {}", reference))?;
+    let parsed = parse_reference(&reference)
+        .ok_or_else(|| format!("Invalid reference format: {}", reference))?;
 
     println!(
         "parsed => book={}, chapter={}, verse_start={}, verse_end={}",
@@ -277,7 +425,12 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
 
     let verse_iter = stmt
         .query_map(
-            params![book_id, parsed.chapter, parsed.verse_start, parsed.verse_end],
+            params![
+                book_id,
+                parsed.chapter,
+                parsed.verse_start,
+                parsed.verse_end
+            ],
             |row| {
                 let verse: i64 = row.get(0)?;
                 let text: String = row.get(1)?;
@@ -303,7 +456,9 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
             reference: reference.clone(),
             theme: "Scripture Lookup".to_string(),
             verses: vec![],
-            message: Some("No result found in local KJV database. Try another reference.".to_string()),
+            message: Some(
+                "No result found in local KJV database. Try another reference.".to_string(),
+            ),
         });
     }
 
@@ -328,7 +483,10 @@ fn search_kjv_reference(app: tauri::AppHandle, reference: String) -> Result<Sear
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![search_kjv_reference])
+        .invoke_handler(tauri::generate_handler![
+            search_kjv_reference,
+            search_kjv_paraphrase
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
