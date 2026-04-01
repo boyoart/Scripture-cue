@@ -85,6 +85,8 @@ type DetectionQueueItem = {
 
 type LiveSuggestionState = TranscriptSuggestion & {
   topReference: string;
+};
+
 type LiveParaphraseSuggestion = ParaphraseMatch & {
   id: string;
   sourceAnchor: string;
@@ -631,7 +633,6 @@ export default function App() {
   }, [paraphraseInput, showParaphraseLane]);
 
   const queueLiveTranscriptSuggestion = useCallback(
-  const runLiveParaphraseSuggestions = useCallback(
     async (spokenTranscript: string) => {
       if (!showParaphraseLane) {
         return;
@@ -672,6 +673,12 @@ export default function App() {
       lastLiveSuggestionRef.current = { suggestionId, timestampMs: now };
       setLiveTranscriptSuggestions((existing) => [nextSuggestion, ...existing].slice(0, 12));
       setParaphraseNotice(`${getStrengthLabel(candidate.strength)} transcript suggestion: ${candidate.anchorLabel}`);
+    },
+    [showParaphraseLane]
+  );
+
+  const runLiveParaphraseSuggestions = useCallback(
+    async (spokenTranscript: string) => {
       const anchorPlan = buildTranscriptAnchorPlan(spokenTranscript);
       if (!anchorPlan.shouldSearch || anchorPlan.anchors.length === 0) {
         setIsLiveParaphraseLoading(false);
@@ -734,7 +741,7 @@ export default function App() {
         setIsLiveParaphraseLoading(false);
       }
     },
-    [showParaphraseLane]
+    []
   );
 
   const handleSearch = useCallback(
@@ -1620,6 +1627,7 @@ export default function App() {
 
           <div className="topbar-status">
             <div className="service-pill">State: {listeningStateLabel}</div>
+            <div className="service-pill">Active: {activeReference || "None"}</div>
             <div className="service-pill">
               <span className={`connection-dot ${listening ? "connection-dot--active" : ""}`} aria-hidden="true" />
               {listening ? "Transcription service connected" : "Transcription standby"}
@@ -1759,6 +1767,7 @@ export default function App() {
               {showParaphraseLane ? (
                 <>
                   {paraphraseNotice ? <p className="mic-status-line">{paraphraseNotice}</p> : null}
+
                   <div className="live-suggestions-block">
                     <h3 className="field-label">Live Suggestions (from transcript)</h3>
                     {liveTranscriptSuggestions.length === 0 ? (
@@ -1785,6 +1794,15 @@ export default function App() {
                                 }}
                                 disabled={!suggestion.matches[0]?.reference}
                               >
+                                Show Suggested Match
+                              </button>
+                            ) : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
                   <div className="live-suggestions-section">
                     <div className="live-suggestions-section__header">
                       <h3>Live Suggestions</h3>
@@ -1813,6 +1831,7 @@ export default function App() {
                       </ul>
                     )}
                   </div>
+
                   {paraphraseMatches.length === 0 ? (
                     <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
                   ) : (
@@ -2138,9 +2157,52 @@ export default function App() {
                           <option value="5">5</option><option value="8">8</option><option value="12">12</option><option value="20">20</option>
                         </select>
                       </div>
-                      {history.length === 0 ? <p className="history-empty">No successful searches yet.</p> : (<><ul className="history-list">{pagedHistory.map((item, idx) => (
-                        <li key={`${item.reference}-${item.timestampMs}-${idx}`}><button className="history-list__item" onClick={() => setReferenceInput(item.reference)}><span className="history-list__reference">{item.reference}</span><span className="history-list__meta">{item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}</span><span className="history-list__time">{new Date(item.timestampMs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span></button></li>
-                      ))}</ul><div className="history-pagination history-pagination--actions"><button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.max(1, value - 1))} disabled={recentHistoryPage <= 1}>Previous</button><p className="history-empty">Page {recentHistoryPage} of {recentHistoryPageCount}</p><button className="present-button present-button--secondary" type="button" onClick={() => setRecentHistoryPage((value) => Math.min(recentHistoryPageCount, value + 1))} disabled={recentHistoryPage >= recentHistoryPageCount}>Next</button></div></>)}
+                      {history.length === 0 ? (
+                        <p className="history-empty">No successful searches yet.</p>
+                      ) : (
+                        <>
+                          <ul className="history-list">
+                            {pagedHistory.map((item, idx) => (
+                              <li key={`${item.reference}-${item.timestampMs}-${idx}`}>
+                                <button className="history-list__item" onClick={() => setReferenceInput(item.reference)}>
+                                  <span className="history-list__reference">{item.reference}</span>
+                                  <span className="history-list__meta">
+                                    {item.repeats > 1 ? `Repeated ${item.repeats}x` : "Ready to search"}
+                                  </span>
+                                  <span className="history-list__time">
+                                    {new Date(item.timestampMs).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      second: "2-digit"
+                                    })}
+                                  </span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="history-pagination history-pagination--actions">
+                            <button
+                              className="present-button present-button--secondary"
+                              type="button"
+                              onClick={() => setRecentHistoryPage((value) => Math.max(1, value - 1))}
+                              disabled={recentHistoryPage <= 1}
+                            >
+                              Previous
+                            </button>
+                            <p className="history-empty">
+                              Page {recentHistoryPage} of {recentHistoryPageCount}
+                            </p>
+                            <button
+                              className="present-button present-button--secondary"
+                              type="button"
+                              onClick={() => setRecentHistoryPage((value) => Math.min(recentHistoryPageCount, value + 1))}
+                              disabled={recentHistoryPage >= recentHistoryPageCount}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </>
                   ) : (
                     <>
@@ -2164,7 +2226,46 @@ export default function App() {
                         </select>
                       </div>
                       {sessionNotice ? <p className="session-notice">{sessionNotice}</p> : null}
-                      {sessionLog.length === 0 ? <p className="history-empty">No verses presented in this session yet.</p> : filteredSessionLog.length === 0 ? <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p> : (<><ol className="session-log-list" aria-label="Service session log">{pagedSessionLog.map((entry) => (<li key={entry.id}><button className="history-list__item" onClick={() => void handleRecallSessionEntry(entry)}><span className="history-list__reference">{entry.reference}</span><span className="history-list__meta">Source: {entry.sourceType}</span><span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span></button></li>))}</ol><div className="history-pagination history-pagination--actions"><button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.max(1, value - 1))} disabled={sessionLogPage <= 1}>Previous</button><p className="history-empty">Page {sessionLogPage} of {sessionLogPageCount}</p><button className="present-button present-button--secondary" type="button" onClick={() => setSessionLogPage((value) => Math.min(sessionLogPageCount, value + 1))} disabled={sessionLogPage >= sessionLogPageCount}>Next</button></div></>)}
+                      {sessionLog.length === 0 ? (
+                        <p className="history-empty">No verses presented in this session yet.</p>
+                      ) : filteredSessionLog.length === 0 ? (
+                        <p className="history-empty">No {sessionLogFilter} entries in this session log yet.</p>
+                      ) : (
+                        <>
+                          <ol className="session-log-list" aria-label="Service session log">
+                            {pagedSessionLog.map((entry) => (
+                              <li key={entry.id}>
+                                <button className="history-list__item" onClick={() => void handleRecallSessionEntry(entry)}>
+                                  <span className="history-list__reference">{entry.reference}</span>
+                                  <span className="history-list__meta">Source: {entry.sourceType}</span>
+                                  <span className="history-list__time">{formatSessionTimestamp(entry.timestampMs)}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ol>
+                          <div className="history-pagination history-pagination--actions">
+                            <button
+                              className="present-button present-button--secondary"
+                              type="button"
+                              onClick={() => setSessionLogPage((value) => Math.max(1, value - 1))}
+                              disabled={sessionLogPage <= 1}
+                            >
+                              Previous
+                            </button>
+                            <p className="history-empty">
+                              Page {sessionLogPage} of {sessionLogPageCount}
+                            </p>
+                            <button
+                              className="present-button present-button--secondary"
+                              type="button"
+                              onClick={() => setSessionLogPage((value) => Math.min(sessionLogPageCount, value + 1))}
+                              disabled={sessionLogPage >= sessionLogPageCount}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
