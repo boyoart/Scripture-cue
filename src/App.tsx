@@ -29,6 +29,11 @@ import {
 } from "./features/display/presentationStyling";
 import { useAutoFitPresentationText } from "./features/display/useAutoFitPresentationText";
 import {
+  getComputedProjectionTypography,
+  getProjectionVerseStyle,
+  type ProjectionTypography
+} from "./features/display/projectionTypography";
+import {
   readAppSettings,
   settingsFromSnapshot,
   writeAppSettings,
@@ -230,19 +235,35 @@ export default function App() {
     ]
   );
   const presentationState = projectorPayload;
+  const projectionTypography = useMemo<ProjectionTypography>(() => ({
+    fontFamily: projectionFontFamily,
+    baseFontSizePx: projectionFontSizePx,
+    lineHeight: projectionLineHeight
+  }), [projectionFontFamily, projectionFontSizePx, projectionLineHeight]);
+
   const {
-    verseStyle: fullscreenVerseStyle,
+    fittedFontSizePx: fullscreenFittedFontSizePx,
+    fittedLineHeight: fullscreenFittedLineHeight,
     didHitMinimum: didFullscreenHitAutoFitMinimum,
     shouldTopBias: shouldFullscreenTopBias
   } = useAutoFitPresentationText({
     viewportRef: fullscreenViewportRef,
     contentRef: fullscreenContentRef,
     verseRef: fullscreenVerseRef,
-    preferredFontSizePx: presentationState.projectionFontSizePx,
-    preferredLineHeight: presentationState.projectionLineHeight,
+    preferredFontSizePx: projectionTypography.baseFontSizePx,
+    preferredLineHeight: projectionTypography.lineHeight,
     displayMode: presentationState.displayMode,
     contentKey: `${presentationState.result.reference}|${presentationState.verseText}|${presentationState.showReference}|${presentationState.referencePlacement}`
   });
+
+
+  const fullscreenTypography = useMemo(() => {
+    return getComputedProjectionTypography(
+      projectionTypography,
+      fullscreenFittedFontSizePx,
+      fullscreenFittedLineHeight
+    );
+  }, [projectionTypography, fullscreenFittedFontSizePx, fullscreenFittedLineHeight]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -1703,10 +1724,7 @@ export default function App() {
               <pre
                 ref={fullscreenVerseRef}
                 className={`presentation-mode__verse ${presentationState.result.found ? "" : "presentation-mode__verse--empty"}`}
-                style={{
-                  fontFamily: getPresentationFontCssFamily(presentationState.projectionFontFamily),
-                  ...fullscreenVerseStyle
-                }}
+                style={getProjectionVerseStyle(fullscreenTypography)}
               >
                 {presentationState.verseText}
               </pre>
