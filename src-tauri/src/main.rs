@@ -257,6 +257,47 @@ fn normalize_phrase_for_match(input: &str) -> String {
         .join(" ")
 }
 
+fn compute_phrase_proximity(normalized_phrase: &str, normalized_text: &str) -> f64 {
+    if normalized_phrase.is_empty() || normalized_text.is_empty() {
+        return 0.0;
+    }
+    if normalized_text.contains(normalized_phrase) {
+        return 1.0;
+    }
+
+    let phrase_tokens: Vec<&str> = normalized_phrase.split_whitespace().collect();
+    let text_tokens: Vec<&str> = normalized_text.split_whitespace().collect();
+    if phrase_tokens.is_empty() || text_tokens.is_empty() {
+        return 0.0;
+    }
+
+    let mut matched = 0usize;
+    let mut total_gap = 0usize;
+    let mut cursor = 0usize;
+
+    for phrase_token in &phrase_tokens {
+        if let Some(found_index) = text_tokens[cursor..]
+            .iter()
+            .position(|token| token == phrase_token)
+            .map(|idx| idx + cursor)
+        {
+            if matched > 0 && found_index > cursor {
+                total_gap += found_index.saturating_sub(cursor);
+            }
+            matched += 1;
+            cursor = found_index + 1;
+        }
+    }
+
+    if matched == 0 {
+        return 0.0;
+    }
+
+    let match_ratio = matched as f64 / phrase_tokens.len() as f64;
+    let gap_penalty = (total_gap as f64 / phrase_tokens.len() as f64).min(1.0);
+    (match_ratio - (gap_penalty * 0.35)).max(0.0)
+}
+
 #[tauri::command]
 fn search_kjv_paraphrase(
     app: tauri::AppHandle,
@@ -294,11 +335,11 @@ fn search_kjv_paraphrase(
     );
     for index in 0..tokens.len() {
         if index > 0 {
-            sql.push_str(" OR ");
+            sql.push_str(" AND ");
         }
         sql.push_str(&format!("LOWER(verses.text) LIKE ?{}", index + 1));
     }
-    sql.push_str(" LIMIT 1400");
+    sql.push_str(" LIMIT 800");
 
     let like_patterns: Vec<String> = tokens.iter().map(|token| format!("%{}%", token)).collect();
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -312,7 +353,9 @@ fn search_kjv_paraphrase(
         })
         .map_err(|e| e.to_string())?;
 
-    let mut scored: Vec<(f64, usize, ParaphraseMatch)> = Vec::new();
+    let mut exact_matches: Vec<(f64, usize, ParaphraseMatch)> = Vec::new();
+    let mut close_matches: Vec<(f64, usize, ParaphraseMatch)> = Vec::new();
+    let mut limited_fallback_matches: Vec<(f64, usize, ParaphraseMatch)> = Vec::new();
     let token_count = tokens.len().max(1) as f64;
 
     for row in rows {
@@ -331,17 +374,12 @@ fn search_kjv_paraphrase(
         }
 
         let exact_phrase_hit = normalized_text.contains(&normalized_phrase);
-        let mut score = (matched_terms as f64) / token_count;
+        let proximity_score = compute_phrase_proximity(&normalized_phrase, &normalized_text);
+        let match_coverage = (matched_terms as f64) / token_count;
+        let mut score = (match_coverage * 0.7) + (proximity_score * 0.3);
         if exact_phrase_hit {
-            score += 0.55;
+            score = (0.9 + (match_coverage * 0.1)).min(1.0);
         }
-        if normalized_phrase.len() > 16
-            && normalized_phrase.split_whitespace().count() >= 4
-            && exact_phrase_hit
-        {
-            score += 0.2;
-        }
-        score = score.min(1.0);
 
         let confidence_label = if score >= 0.88 {
             "Strong".to_string()
@@ -351,7 +389,7 @@ fn search_kjv_paraphrase(
             "Possible".to_string()
         };
 
-        scored.push((
+        let scored_item = (
             score,
             matched_terms,
             ParaphraseMatch {
@@ -361,17 +399,35 @@ fn search_kjv_paraphrase(
                 confidence_label,
                 matched_terms,
             },
-        ));
+        );
+
+        if exact_phrase_hit {
+            exact_matches.push(scored_item);
+        } else if match_coverage >= 0.8 && proximity_score >= 0.65 {
+            close_matches.push(scored_item);
+        } else if match_coverage >= 1.0 && proximity_score >= 0.5 {
+            limited_fallback_matches.push(scored_item);
+        }
     }
 
-    scored.sort_by(|a, b| {
-        b.0.partial_cmp(&a.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| b.1.cmp(&a.1))
-    });
+    let sort_matches = |matches: &mut Vec<(f64, usize, ParaphraseMatch)>| {
+        matches.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| b.1.cmp(&a.1))
+        });
+    };
+    sort_matches(&mut exact_matches);
+    sort_matches(&mut close_matches);
+    sort_matches(&mut limited_fallback_matches);
 
-    Ok(scored
-        .into_iter()
+    let selected = if !exact_matches.is_empty() || !close_matches.is_empty() {
+        exact_matches.into_iter().chain(close_matches)
+    } else {
+        limited_fallback_matches.into_iter()
+    };
+
+    Ok(selected
         .take(max_results)
         .map(|(_, _, item)| item)
         .collect())

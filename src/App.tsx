@@ -199,6 +199,7 @@ export default function App() {
   const [detectionPulseKey, setDetectionPulseKey] = useState(0);
   const { bars, micState, transcript, errorMessage, lastErrorCode, lastStopReason, listening, startListening, stopListening } = useSpeechMeter();
   const isListeningModeActive = persistentListeningMode !== "off";
+  const isManualOperatorMode = listeningMode === "manual";
 
   const verseText = useMemo(() => {
     if (!result.found || result.verses.length === 0) {
@@ -585,12 +586,12 @@ export default function App() {
     try {
       setIsParaphraseLoading(true);
       setParaphraseNotice(null);
-      const matches = await searchKjvParaphrase(trimmedPhrase, 12);
+      const matches = await searchKjvParaphrase(trimmedPhrase, 10);
       setParaphraseMatches(matches);
       if (matches.length === 0) {
-        setParaphraseNotice("No close phrase matches found. Try fewer keywords or simpler wording.");
+        setParaphraseNotice("No exact or close phrase matches found. Try a shorter phrase.");
       } else {
-        setParaphraseNotice(`Showing ${matches.length} likely KJV matches for "${trimmedPhrase}".`);
+        setParaphraseNotice(`Showing ${matches.length} exact or close phrase matches for "${trimmedPhrase}".`);
       }
     } catch (error) {
       const message =
@@ -643,9 +644,17 @@ export default function App() {
   const handleStartListening = useCallback(async () => {
     setSpeechNotice(null);
     setListeningState("listening");
-    setPersistentListeningMode(listeningMode === "auto" ? "auto_active" : "manual_active");
-    autoListeningSessionRef.current = listeningMode === "auto";
-    await startListening();
+    try {
+      await startListening();
+      setPersistentListeningMode(listeningMode === "auto" ? "auto_active" : "manual_active");
+      autoListeningSessionRef.current = listeningMode === "auto";
+    } catch (error) {
+      autoListeningSessionRef.current = false;
+      setPersistentListeningMode("off");
+      setListeningState("error");
+      const message = error instanceof Error ? error.message : "Unable to start listening.";
+      setSpeechNotice(message);
+    }
   }, [listeningMode, startListening]);
 
   const handleStopListening = useCallback(() => {
@@ -1548,16 +1557,18 @@ export default function App() {
                       </div>
                       <p className="history-list__meta">{match.sourceLabel}</p>
                       <p className="detected-list__preview">{match.preview}</p>
-                      <button
-                        className="present-button present-button--secondary detected-list__action"
-                        type="button"
-                        onClick={() => {
-                          setDetectionQueue((previous) => previous.filter((entry) => entry.id !== match.id));
-                          void handleSearch(match.reference, "spoken");
-                        }}
-                      >
-                        {match.isPending ? "Review & Display" : "Show on Display"}
-                      </button>
+                      {isManualOperatorMode ? (
+                        <button
+                          className="present-button present-button--secondary detected-list__action"
+                          type="button"
+                          onClick={() => {
+                            setDetectionQueue((previous) => previous.filter((entry) => entry.id !== match.id));
+                            void handleSearch(match.reference, "spoken");
+                          }}
+                        >
+                          {match.isPending ? "Review & Display" : "Show on Display"}
+                        </button>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -1586,9 +1597,11 @@ export default function App() {
                           </div>
                           <p className="history-list__meta">Matched terms: {match.matchedTerms}</p>
                           <p className="detected-list__preview">{match.text}</p>
-                          <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
-                            Show on Display
-                          </button>
+                          {isManualOperatorMode ? (
+                            <button className="present-button present-button--secondary detected-list__action" type="button" onClick={() => void handleSearch(match.reference, "typed")}>
+                              Show on Display
+                            </button>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -1659,16 +1672,20 @@ export default function App() {
                   </div>
                 </div>
               </div>
-              <div className="service-actions service-actions--compact manual-controls-grid">
-                <button className="present-button present-button--secondary" type="button" onClick={() => void toggleProjectorView()}>
-                  {isProjectorWindowOpen ? "Focus Display" : "Show on Display"}
-                </button>
-                <button className="present-button present-button--secondary" type="button" onClick={() => void togglePresentationMode()}>
-                  {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
-                </button>
-                <button className="present-button present-button--secondary" type="button" onClick={handleRepresentCurrentVerse}>Re-present</button>
-                <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>Hide</button>
-              </div>
+              {isManualOperatorMode ? (
+                <div className="service-actions service-actions--compact manual-controls-grid">
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void toggleProjectorView()}>
+                    {isProjectorWindowOpen ? "Focus Display" : "Show on Display"}
+                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void togglePresentationMode()}>
+                    {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
+                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={handleRepresentCurrentVerse}>Re-present</button>
+                  <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>Hide</button>
+                </div>
+              ) : (
+                <p className="history-empty">Auto listening mode hides manual display actions to keep the flow clean.</p>
+              )}
             </div>
           </section>
         </div>
