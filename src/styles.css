@@ -369,6 +369,25 @@ input[type="range"] { padding: 0; }
 .paraphrase-list {
   max-height: none;
 }
+.live-suggestions-section {
+  display: grid;
+  gap: .45rem;
+  margin-bottom: .55rem;
+  padding-bottom: .55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--border-soft), transparent 18%);
+}
+.live-suggestions-section__header h3 {
+  margin: 0;
+  font-size: .86rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-primary);
+}
+.live-suggestions-section__header p {
+  margin: .22rem 0 0;
+  font-size: .78rem;
+  color: var(--text-muted);
+}
 .detected-list__item { border: 1px solid color-mix(in srgb, var(--border-soft), transparent 24%); border-radius: 10px; padding: .65rem .7rem; background: color-mix(in srgb, var(--input-bg), transparent 18%); display: grid; gap: .38rem; }
 .detected-list__item--pending { border-color: color-mix(in srgb, #f4c84c, var(--border-soft) 35%); }
 .detected-list__row { display: flex; justify-content: space-between; gap: .5rem; align-items: center; }
