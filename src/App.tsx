@@ -47,6 +47,7 @@ import {
   type SessionLogEntry,
   type SessionSourceType
 } from "./features/history/sessionLog";
+import { APP_BRANDING } from "./branding";
 
 type HistoryItem = {
   reference: string;
@@ -955,6 +956,28 @@ export default function App() {
     }
   }, [listeningState]);
 
+  const liveConfidencePercent = speechDebug ? Math.round(speechDebug.confidence * 100) : null;
+  const uniqueHistoryReferences = useMemo(() => [...new Set(history.map((item) => item.reference))], [history]);
+  const topDetectedMatches = useMemo(() => uniqueHistoryReferences.slice(0, 6), [uniqueHistoryReferences]);
+  const historyReferenceCursor = useMemo(() => Math.max(0, uniqueHistoryReferences.indexOf(activeReference)), [activeReference, uniqueHistoryReferences]);
+
+  const handleNavigateHistoryReference = useCallback(
+    async (direction: "previous" | "next") => {
+      if (uniqueHistoryReferences.length === 0) {
+        return;
+      }
+      const activeIndex = uniqueHistoryReferences.indexOf(activeReference);
+      const safeIndex = activeIndex === -1 ? 0 : activeIndex;
+      const nextIndex = direction === "previous"
+        ? Math.max(0, safeIndex - 1)
+        : Math.min(uniqueHistoryReferences.length - 1, safeIndex + 1);
+      const nextReference = uniqueHistoryReferences[nextIndex];
+      setReferenceInput(nextReference);
+      await handleSearch(nextReference, "typed");
+    },
+    [activeReference, handleSearch, uniqueHistoryReferences]
+  );
+
   const togglePresentationMode = useCallback(async () => {
     const root = document.documentElement;
     if (!document.fullscreenElement) {
@@ -1183,25 +1206,45 @@ export default function App() {
     <>
       <div className={`app-shell ${isPresentationMode ? "app-shell--presentation-active" : ""}`}>
         <header className="app-shell__topbar">
-          <div>
-            <p className="eyebrow">SCRIPTURE CUE</p>
-            <h1>Presentation Operator Console</h1>
+          <div className="brand-block">
+            <img src={APP_BRANDING.logoUrl} alt={`${APP_BRANDING.productName} logo`} className="brand-block__logo" />
+            <div>
+              <p className="eyebrow">{APP_BRANDING.productName.toUpperCase()}</p>
+              <h1>{APP_BRANDING.subtitle}</h1>
+            </div>
           </div>
           <div className="topbar-actions">
-            <div className="service-pill">Status: {status}</div>
-            <div className="service-pill">Listening State: {listeningStateLabel}</div>
+            <div className="service-pill">Translation: {selectedTranslation}</div>
+            <div className="service-pill">Listening: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
+            <div className="service-pill">Connection: {listening ? "Live" : "Standby"}</div>
             <div key={detectionPulseKey} className="service-pill service-pill--detection" aria-live="polite">
               <span className="detection-dot" aria-hidden="true" />
               Detection Ready
             </div>
-            <div className="service-pill">Listening Mode: {listeningMode === "auto" ? "Auto" : "Manual"}</div>
-            <div className="service-pill">Display Mode: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
+            <div className="service-pill">Listening State: {listeningStateLabel}</div>
+            <div className="service-pill">Display: {displayMode === "lower-third" ? "Lower Third" : "Fullscreen"}</div>
             {isRestoringStartupState ? <div className="service-pill">Restoring startup state…</div> : null}
-            <button className="present-button" onClick={() => void handleOpenProjectorView()} disabled={isLoading}>
+            <button className="present-button present-button--secondary" onClick={() => void handleOpenProjectorView()} disabled={isLoading}>
               {isProjectorWindowOpen ? "Focus Projector View" : "Open Projector View"}
             </button>
-            <button className="present-button" onClick={() => void togglePresentationMode()} disabled={isLoading}>
+            <button className="present-button present-button--secondary" onClick={() => void togglePresentationMode()} disabled={isLoading}>
               {isPresentationMode ? "Exit Fullscreen" : "Present Fullscreen"}
+            </button>
+            <button className="present-button present-button--secondary" type="button" onClick={toggleDisplayMode}>
+              {displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}
+            </button>
+            <button
+              className={`present-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
+              onClick={() => {
+                if (isListeningModeActive) {
+                  handleStopListening();
+                } else {
+                  void handleStartListening();
+                }
+              }}
+              disabled={isLoading}
+            >
+              {isListeningModeActive ? "Stop Listening" : "Start Listening"}
             </button>
             <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>
               Settings
@@ -1212,15 +1255,35 @@ export default function App() {
           </div>
         </header>
 
-        <div className="workspace-grid">
-          <div className="workspace-column">
-            <section className="panel-card">
-              <header className="panel-card__header">
-                <h2>Scripture Search</h2>
-                <p>Operator-ready lookup with the bundled KJV database.</p>
-              </header>
+        <div className="workspace-grid workspace-grid--dashboard">
+          <section className="panel-card">
+            <header className="panel-card__header">
+              <h2>Live Transcript Feed</h2>
+              <p>Compact live listening monitor with scripture detection confidence.</p>
+            </header>
+            <div className="panel-card__body search-controls">
+              <MicrophoneMeter bars={bars} micState={micState} />
+              <p className="mic-status-line">Current transcript: {transcript.trim() || "Awaiting speech input..."}</p>
+              {speechDebug ? (
+                <dl className="metadata-grid">
+                  <div><dt>Detected</dt><dd>{speechDebug.normalizedReference}</dd></div>
+                  <div><dt>Confidence</dt><dd>{liveConfidencePercent}%</dd></div>
+                  <div><dt>Match source</dt><dd>{speechDebug.debug.bookMatchSource}</dd></div>
+                  <div><dt>Ambiguity</dt><dd>{speechDebug.ambiguity === "clear" ? "Clear" : "Manual review"}</dd></div>
+                </dl>
+              ) : <p className="history-empty">No spoken detection yet for this session.</p>}
+              {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
+              {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
+            </div>
+          </section>
 
-              <div className="panel-card__body search-controls">
+          <section className="panel-card preview-card">
+            <header className="panel-card__header">
+              <h2>Main Verse Preview</h2>
+              <p>Live scripture card with direct operator actions.</p>
+            </header>
+            <div className="panel-card__body">
+              <div className="search-controls">
                 <label className="field-label" htmlFor="reference-input">Reference</label>
                 <div className="search-row">
                   <input
@@ -1238,121 +1301,9 @@ export default function App() {
                   </button>
                 </div>
                 <p className="shortcut-hint">Tip: Alt+F focuses this field. Alt+Enter runs search.</p>
-
-                <div className="mic-controls-row">
-                  <button
-                    className={`mic-toggle-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
-                    onClick={() => {
-                      if (isListeningModeActive) {
-                        handleStopListening();
-                      } else {
-                        void handleStartListening();
-                      }
-                    }}
-                    disabled={isLoading}
-                  >
-                    {isListeningModeActive ? "Stop Listening" : "Start Listening"}
-                  </button>
-                  <span className={`mic-state-chip mic-state-chip--${listeningState}`}>{listeningStateLabel}</span>
-                </div>
-
-                <MicrophoneMeter bars={bars} micState={micState} />
-                {errorMessage ? <p className="mic-status-line mic-status-line--error">{errorMessage}</p> : null}
-                {speechNotice ? <p className="mic-status-line">{speechNotice}</p> : null}
-
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="translation-select">Translation</label>
-                  <select id="translation-select" value={selectedTranslation} onChange={(e) => setSelectedTranslation(e.target.value)}>
-                    <option value="KJV">KJV</option>
-                  </select>
-                </div>
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="display-mode-select-inline">Display mode</label>
-                  <select id="display-mode-select-inline" value={displayMode} onChange={(e) => setDisplayMode(e.target.value as DisplayMode)}>
-                    <option value="fullscreen">Fullscreen</option>
-                    <option value="lower-third">Lower Third</option>
-                  </select>
-                </div>
-                <div className="translation-row">
-                  <label className="field-label" htmlFor="listening-mode-select-inline">Listening mode</label>
-                  <select id="listening-mode-select-inline" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
-                    <option value="manual">Manual</option>
-                    <option value="auto">Auto</option>
-                  </select>
-                </div>
-
-                <div className="service-actions">
-                  <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>
-                    Clear Current Verse
-                  </button>
-                  <button className="present-button" type="button" onClick={handleRepresentCurrentVerse}>
-                    Re-present Current Verse
-                  </button>
-                </div>
-
-                <section className="quick-actions-panel" aria-label="Quick actions">
-                  <h3>Quick Actions</h3>
-                  <div className="quick-actions-grid">
-                    <button className="present-button" type="button" onClick={handleRepresentCurrentVerse}>Re-present Verse</button>
-                    <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>Clear Verse</button>
-                    <button
-                      className={`present-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
-                      type="button"
-                      onClick={() => {
-                        if (isListeningModeActive) {
-                          handleStopListening();
-                        } else {
-                          void handleStartListening();
-                        }
-                      }}
-                    >
-                      {isListeningModeActive ? "Stop Listening" : "Start Listening"}
-                    </button>
-                    <button className="present-button present-button--secondary" type="button" onClick={() => void toggleProjectorView()}>
-                      {isProjectorWindowOpen ? "Hide Projector" : "Show Projector"}
-                    </button>
-                    <button className="present-button present-button--secondary" type="button" onClick={() => void togglePresentationMode()}>
-                      {isPresentationMode ? "Exit Fullscreen" : "Enter Fullscreen"}
-                    </button>
-                    <button className="present-button present-button--secondary" type="button" onClick={toggleDisplayMode}>
-                      {displayMode === "lower-third" ? "Use Fullscreen Mode" : "Use Lower Third Mode"}
-                    </button>
-                  </div>
-                </section>
-
-                <section className="favorites-panel" aria-label="Quick presets">
-                  <div className="favorites-panel__header">
-                    <h3>Favorites / Quick Presets</h3>
-                    <button className="present-button present-button--secondary" type="button" onClick={handleSaveFavoriteReference}>
-                      Save Current
-                    </button>
-                  </div>
-                  {favoriteReferences.length === 0 ? (
-                    <p className="history-empty">No favorites saved yet.</p>
-                  ) : (
-                    <ul className="favorites-list">
-                      {favoriteReferences.map((favorite) => (
-                        <li key={favorite} className="favorites-list__item">
-                          <button className="history-list__item" type="button" onClick={() => void handleRecallFavoriteReference(favorite)}>
-                            <span className="history-list__reference">{favorite}</span>
-                            <span className="history-list__meta">Recall preset</span>
-                          </button>
-                          <button className="favorite-remove-button" type="button" onClick={() => handleRemoveFavoriteReference(favorite)}>
-                            Remove
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
               </div>
-            </section>
-          </div>
 
-          <div className="workspace-column">
-            <section className="panel-card preview-card">
               <header className="panel-card__header"><h2>Verse Preview</h2><p>Large-format text for confidence monitor and projection checks.</p></header>
-              <div className="panel-card__body">
                 <PresentationSurface
                   as="div"
                   className={`verse-preview-shell ${hasCustomPresentationBackground ? "verse-preview-shell--image" : ""}`}
@@ -1375,20 +1326,123 @@ export default function App() {
                     Auto-fit hit the minimum projection size for this passage. Split into multiple slides if readability is low.
                   </p>
                 ) : null}
+                <div className="service-actions">
+                  <button className="present-button" type="button" onClick={() => void toggleProjectorView()}>
+                    {isProjectorWindowOpen ? "Focus Display" : "Show on Display"}
+                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={handleRepresentCurrentVerse}>
+                    Re-present
+                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={handleClearCurrentVerse}>
+                    Clear
+                  </button>
+                </div>
+                <div className="service-actions">
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void handleNavigateHistoryReference("previous")} disabled={historyReferenceCursor <= 0}>
+                    Previous Verse
+                  </button>
+                  <button className="present-button present-button--secondary" type="button" onClick={() => void handleNavigateHistoryReference("next")} disabled={historyReferenceCursor >= Math.max(uniqueHistoryReferences.length - 1, 0)}>
+                    Next Verse
+                  </button>
+                </div>
               </div>
-            </section>
+          </section>
 
-            <section className="panel-card metadata-strip-card">
-              <div className="panel-card__body">
+          <section className="panel-card">
+            <header className="panel-card__header">
+              <h2>Detected Verse Matches</h2>
+              <p>Recent reference detections with one-click present actions.</p>
+            </header>
+            <div className="panel-card__body search-controls">
+              <div className="translation-row">
+                <label className="field-label" htmlFor="translation-select">Translation</label>
+                <select id="translation-select" value={selectedTranslation} onChange={(e) => setSelectedTranslation(e.target.value)}>
+                  <option value="KJV">KJV</option>
+                </select>
+              </div>
+              <div className="translation-row">
+                <label className="field-label" htmlFor="listening-mode-select-inline">Listening mode</label>
+                <select id="listening-mode-select-inline" value={listeningMode} onChange={(e) => setListeningMode(e.target.value as ListeningMode)}>
+                  <option value="manual">Manual</option>
+                  <option value="auto">Auto</option>
+                </select>
+              </div>
+              {topDetectedMatches.length === 0 ? <p className="history-empty">Detected verse matches will appear here.</p> : (
+                <ul className="history-list">
+                  {topDetectedMatches.map((match) => (
+                    <li key={match}>
+                      <button className="history-list__item" type="button" onClick={() => void handleSearch(match, "typed")}>
+                        <span className="history-list__reference">{match}</span>
+                        <span className="history-list__meta">Present now</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <section className="quick-actions-panel">
+                <h3>Paraphrase Matches</h3>
+                <p className="history-empty">Paraphrase detection placeholder ready for future inference logic.</p>
+              </section>
+              <section className="metadata-strip-card panel-card">
                 <dl className="metadata-grid">
                   <div><dt>Reference</dt><dd>{activeReference || result.reference}</dd></div>
                   <div><dt>Translation</dt><dd>{result.translation}</dd></div>
                   <div><dt>Theme</dt><dd>{result.theme}</dd></div>
                   <div><dt>Status</dt><dd>{result.found ? "Loaded" : "No Result"}</dd></div>
                 </dl>
+              </section>
+            </div>
+          </section>
+        </div>
+
+        <div className="workspace-grid workspace-grid--bottom">
+          <section className="panel-card">
+            <header className="panel-card__header"><h2>Session Stats</h2></header>
+            <div className="panel-card__body">
+              <dl className="metadata-grid">
+                <div><dt>Status</dt><dd>{status}</dd></div>
+                <div><dt>Search history</dt><dd>{history.length} entries</dd></div>
+                <div><dt>Session log</dt><dd>{sessionLog.length} entries</dd></div>
+                <div><dt>Projector</dt><dd>{isProjectorWindowOpen ? "Open" : "Closed"}</dd></div>
+              </dl>
+            </div>
+          </section>
+
+          <section className="panel-card">
+            <header className="panel-card__header"><h2>Manual Controls</h2></header>
+            <div className="panel-card__body search-controls">
+              <div className="service-actions">
+                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("history")}>History / Session</button>
+                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("help")}>Help</button>
+                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("debug")}>Debug Tools</button>
+                <button className="present-button present-button--secondary" type="button" onClick={() => setActiveDialog("settings")}>Settings</button>
               </div>
-            </section>
-          </div>
+            </div>
+          </section>
+
+          <section className="panel-card favorites-panel" aria-label="Quick presets">
+            <div className="favorites-panel__header">
+              <h3>Favorites / Quick Presets</h3>
+              <button className="present-button present-button--secondary" type="button" onClick={handleSaveFavoriteReference}>Save Current</button>
+            </div>
+            {favoriteReferences.length === 0 ? (
+              <p className="history-empty">No favorites saved yet.</p>
+            ) : (
+              <ul className="favorites-list">
+                {favoriteReferences.map((favorite) => (
+                  <li key={favorite} className="favorites-list__item">
+                    <button className="history-list__item" type="button" onClick={() => void handleRecallFavoriteReference(favorite)}>
+                      <span className="history-list__reference">{favorite}</span>
+                      <span className="history-list__meta">Recall preset</span>
+                    </button>
+                    <button className="favorite-remove-button" type="button" onClick={() => handleRemoveFavoriteReference(favorite)}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       </div>
 
@@ -1707,6 +1761,10 @@ export default function App() {
             style: { "--lower-third-chroma-key": lowerThirdChromaKeyColor } as CSSProperties
           }}
         >
+          <div className="presentation-branding">
+            <img src={APP_BRANDING.logoUrl} alt="" aria-hidden="true" />
+            <span>{APP_BRANDING.productName}</span>
+          </div>
           <button className="presentation-exit-button" onClick={() => void togglePresentationMode()}>Exit Fullscreen</button>
           {didFullscreenHitAutoFitMinimum && presentationState.result.found ? (
             <p className="presentation-fit-warning" role="status">

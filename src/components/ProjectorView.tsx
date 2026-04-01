@@ -15,6 +15,7 @@ import {
   type ProjectorPayload,
   type ReferencePlacement
 } from "../features/display/projectorSync";
+import { APP_BRANDING } from "../branding";
 
 type ProjectorViewState = {
   result: SearchResult;
@@ -174,6 +175,10 @@ export default function ProjectorView() {
         style: { "--lower-third-chroma-key": state.lowerThirdChromaKeyColor } as CSSProperties
       }}
     >
+      <div className="projector-screen__branding">
+        <img src={APP_BRANDING.logoUrl} alt="" aria-hidden="true" />
+        <span>{APP_BRANDING.productName}</span>
+      </div>
       <div
         ref={viewportRef}
         className={`projector-screen__scripture-viewport ${shouldTopBias ? "projector-screen__scripture-viewport--top-biased" : ""}`}
