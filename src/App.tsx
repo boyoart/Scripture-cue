@@ -1142,9 +1142,19 @@ export default function App() {
     if (existing) {
       projectorWindowRef.current = existing;
       setIsProjectorWindowOpen(true);
-      await existing.show();
-      await existing.setFocus();
-      setStatus("Projector view focused");
+      try {
+        await existing.unminimize();
+      } catch {
+        // no-op: window may not be minimized on this platform/runtime.
+      }
+      try {
+        await existing.show();
+        await existing.setFocus();
+        setStatus("Projector view focused");
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : typeof error === "string" ? error : JSON.stringify(error);
+        setStatus(`Projector focus fallback: ${msg}`);
+      }
       return;
     }
 
@@ -1437,7 +1447,9 @@ export default function App() {
             </div>
             {isRestoringStartupState ? <div className="service-pill">Restoring…</div> : null}
             <button
-              className={`present-button topbar-listen-button ${isListeningModeActive ? "mic-toggle-button--live" : ""}`}
+              className={`present-button topbar-listen-button ${
+                isListeningModeActive ? "topbar-listen-button--active mic-toggle-button--live" : "topbar-listen-button--idle"
+              }`}
               onClick={() => {
                 if (isListeningModeActive) {
                   handleStopListening();
@@ -1565,7 +1577,7 @@ export default function App() {
                   {paraphraseMatches.length === 0 ? (
                     <p className="history-empty">Enter a phrase below to find likely local KJV matches.</p>
                   ) : (
-                    <ul className="detected-list">
+                    <ul className="detected-list paraphrase-list">
                       {paraphraseMatches.map((match) => (
                         <li key={`${match.reference}-${match.text.slice(0, 16)}`} className="detected-list__item">
                           <div className="detected-list__row">

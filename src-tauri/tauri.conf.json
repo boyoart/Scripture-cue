@@ -11,6 +11,11 @@
     "version": "0.2.0"
   },
   "tauri": {
+    "allowlist": {
+      "window": {
+        "create": true
+      }
+    },
     "windows": [
       {
         "title": "Scripture Cue",
