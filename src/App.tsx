@@ -24,6 +24,7 @@ import {
 } from "./features/display/projectorSync";
 import {
   getBackgroundImageSource,
+  isSupportedBackgroundImagePath,
   getPresentationFontCssFamily,
   PRESENTATION_FONT_OPTIONS
 } from "./features/display/presentationStyling";
@@ -905,11 +906,24 @@ export default function App() {
       });
 
       if (!selected || Array.isArray(selected)) {
-        setSessionNotice("Background selection canceled.");
+        return;
+      }
+
+      if (!isSupportedBackgroundImagePath(selected)) {
+        setStatus("Background selection failed");
+        setSessionNotice("Selected file is not a supported image. Please choose PNG, JPG, JPEG, or WEBP.");
+        return;
+      }
+
+      const resolvedSource = await getBackgroundImageSource(selected);
+      if (!resolvedSource) {
+        setStatus("Background selection failed");
+        setSessionNotice("Unable to load the selected background image. Try another file.");
         return;
       }
 
       setCustomBackgroundPath(selected);
+      setCustomBackgroundSource(resolvedSource);
       setBackgroundMode("custom-image");
       setStatus("Custom presentation background selected");
       setSessionNotice(`Custom background selected: ${selected}`);
@@ -1456,7 +1470,7 @@ export default function App() {
             </div>
             {isRestoringStartupState ? <div className="service-pill">Restoring…</div> : null}
             <button
-              className={`present-button topbar-listen-button ${
+              className={`topbar-listen-button ${
                 isListeningModeActive ? "topbar-listen-button--active mic-toggle-button--live" : "topbar-listen-button--idle"
               }`}
               onClick={() => {
