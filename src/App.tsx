@@ -1981,17 +1981,20 @@ export default function App() {
                     </section>
                   </div>
 
-                  <div className="paraphrase-actions-row">
-                    <button
-                      className="present-button present-button--ghost paraphrase-actions-row__button"
-                      type="button"
-                      onClick={handleClearParaphraseMatches}
-                      disabled={isParaphraseLoading || isLiveParaphraseLoading}
-                      title="Clear paraphrase-only results"
-                    >
-                      Clear Paraphrase Matches
-                    </button>
-                  </div>
+                  <section className="paraphrase-bottom-actions" aria-label="Paraphrase panel actions">
+                    <div className="paraphrase-bottom-actions__divider" aria-hidden="true" />
+                    <div className="paraphrase-actions-row">
+                      <button
+                        className="present-button present-button--ghost paraphrase-actions-row__button"
+                        type="button"
+                        onClick={handleClearParaphraseMatches}
+                        disabled={isParaphraseLoading || isLiveParaphraseLoading}
+                        title="Clear paraphrase-only results"
+                      >
+                        Clear Paraphrase Matches
+                      </button>
+                    </div>
+                  </section>
                 </>
               ) : (
                 <p className="history-empty">Paraphrase lane is turned off from the top bar.</p>
