@@ -1306,11 +1306,14 @@ export default function App() {
     }
 
     const timeoutId = window.setTimeout(() => {
-      void runLiveParaphraseSuggestions(transcript);
+      void Promise.allSettled([
+        runLiveParaphraseSuggestions(transcript),
+        queueLiveTranscriptSuggestion(transcript)
+      ]);
     }, LIVE_PARAPHRASE_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timeoutId);
-  }, [isListeningModeActive, runLiveParaphraseSuggestions, showParaphraseLane, transcript]);
+  }, [isListeningModeActive, queueLiveTranscriptSuggestion, runLiveParaphraseSuggestions, showParaphraseLane, transcript]);
 
   useEffect(() => {
     if (listeningMode !== "auto" || !autoListeningSessionRef.current || listening) {

@@ -369,6 +369,8 @@ input[type="range"] { padding: 0; }
 .paraphrase-card {
   display: flex;
   flex-direction: column;
+  max-height: 430px;
+  overflow: hidden;
 }
 .detected-card .panel-card__body {
   flex: 1;
@@ -379,16 +381,17 @@ input[type="range"] { padding: 0; }
 .paraphrase-card .panel-card__body {
   flex: 1;
   min-height: 0;
-  max-height: 430px;
-  overflow: hidden;
+  max-height: none;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
 }
 .paraphrase-panel-body {
   display: flex;
   flex-direction: column;
   min-height: 0;
   gap: .7rem;
-  overflow-y: auto;
-  padding-right: .2rem;
+  padding-right: .35rem;
 }
 .paraphrase-panel-sections {
   display: flex;
@@ -467,7 +470,8 @@ input[type="range"] { padding: 0; }
 }
 .paraphrase-panel-body .detected-list {
   overflow: visible;
-  min-height: auto;
+  min-height: 0;
+  padding-right: 0;
 }
 .live-suggestions-block {
   display: grid;
