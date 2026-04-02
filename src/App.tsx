@@ -1858,9 +1858,21 @@ export default function App() {
           </section>
 
           <section className="panel-card paraphrase-card">
-            <header className="panel-card__header">
-              <h2>Paraphrase Matches</h2>
-              <p>Optional lane for paraphrase-led lookup.</p>
+            <header className="panel-card__header panel-card__header--paraphrase">
+              <div className="panel-card__header-copy">
+                <h2>Paraphrase Matches</h2>
+                <p>Optional lane for paraphrase-led lookup.</p>
+              </div>
+              <button
+                className="icon-button icon-button--subtle"
+                type="button"
+                onClick={handleClearParaphraseMatches}
+                disabled={isParaphraseLoading || isLiveParaphraseLoading}
+                title="Clear paraphrase matches"
+                aria-label="Clear paraphrase matches"
+              >
+                ↺
+              </button>
             </header>
             <div className="panel-card__body search-controls paraphrase-panel-body">
               {showParaphraseLane ? (
@@ -1980,21 +1992,6 @@ export default function App() {
                       )}
                     </section>
                   </div>
-
-                  <section className="paraphrase-bottom-actions" aria-label="Paraphrase panel actions">
-                    <div className="paraphrase-bottom-actions__divider" aria-hidden="true" />
-                    <div className="paraphrase-actions-row">
-                      <button
-                        className="present-button present-button--ghost paraphrase-actions-row__button"
-                        type="button"
-                        onClick={handleClearParaphraseMatches}
-                        disabled={isParaphraseLoading || isLiveParaphraseLoading}
-                        title="Clear paraphrase-only results"
-                      >
-                        Clear Paraphrase Matches
-                      </button>
-                    </div>
-                  </section>
                 </>
               ) : (
                 <p className="history-empty">Paraphrase lane is turned off from the top bar.</p>
