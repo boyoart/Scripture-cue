@@ -1887,15 +1887,6 @@ export default function App() {
                       >
                         {isParaphraseLoading ? "Searching..." : "Search"}
                       </button>
-                      <button
-                        className="present-button present-button--ghost paraphrase-search-row__button"
-                        type="button"
-                        onClick={handleClearParaphraseMatches}
-                        disabled={isParaphraseLoading || isLiveParaphraseLoading}
-                        title="Clear paraphrase-only results"
-                      >
-                        Clear Paraphrase Matches
-                      </button>
                     </div>
                   </section>
 
@@ -1988,6 +1979,18 @@ export default function App() {
                         </ul>
                       )}
                     </section>
+                  </div>
+
+                  <div className="paraphrase-actions-row">
+                    <button
+                      className="present-button present-button--ghost paraphrase-actions-row__button"
+                      type="button"
+                      onClick={handleClearParaphraseMatches}
+                      disabled={isParaphraseLoading || isLiveParaphraseLoading}
+                      title="Clear paraphrase-only results"
+                    >
+                      Clear Paraphrase Matches
+                    </button>
                   </div>
                 </>
               ) : (
