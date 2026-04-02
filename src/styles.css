@@ -411,11 +411,24 @@ input[type="range"] { padding: 0; }
   width: auto;
   justify-self: start;
 }
+.paraphrase-bottom-actions {
+  display: grid;
+  gap: .55rem;
+  margin-top: .35rem;
+  padding-top: .15rem;
+  padding-bottom: .15rem;
+}
+.paraphrase-bottom-actions__divider {
+  width: 100%;
+  border-top: 1px solid color-mix(in srgb, var(--border-soft), transparent 12%);
+  margin-top: .2rem;
+}
 .paraphrase-actions-row {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  padding-top: .2rem;
+  padding-top: .35rem;
+  padding-bottom: .1rem;
 }
 .paraphrase-actions-row__button {
   white-space: nowrap;
